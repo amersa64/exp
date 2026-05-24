@@ -1,0 +1,22 @@
+[project]
+name = "the-coach"
+version = "0.1.0"
+description = "Agentic behavior-change copilot — backend brain"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "anthropic>=0.39",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[project.scripts]
+coach-demo = "cli.demo:main"
