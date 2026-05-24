@@ -14,27 +14,41 @@ actor CoachAPI {
     private let session: URLSession = .shared
 
     func registerPushToken(_ token: String) async {
-        _ = try? await post("/push/register", body: ["token": token])
+        try? await send("/push/register", body: ["token": token])
     }
 
     func intakeQuestions() async throws -> [IntakeQuestion] {
-        try await get("/intake/questions")
+        let wrapper: IntakeQuestionsResponse = try await get("/intake/questions")
+        return wrapper.questions
     }
 
-    func submitIntake(_ answers: [String: String]) async throws -> IntakeResult {
-        try await post("/intake/submit", body: ["answers": answers])
+    func submitIntake(answers: [String: String], identityStatement: String) async throws -> IntakeResult {
+        try await post("/intake/submit", body: [
+            "answers": answers,
+            "identity_statement": identityStatement,
+        ])
     }
 
     func world() async throws -> World {
         try await get("/world")
     }
 
+    func identity() async throws -> Identity {
+        try await get("/identity")
+    }
+
+    func milestones() async throws -> [Milestone] {
+        let wrapper: MilestonesResponse = try await get("/milestones")
+        return wrapper.milestones
+    }
+
     func openFollowups() async throws -> [FollowUp] {
-        try await get("/followups")
+        let wrapper: FollowupsResponse = try await get("/followups")
+        return wrapper.followups
     }
 
     func reply(nudgeId: String, outcome: NudgeOutcome, friction: String?) async throws {
-        _ = try await post("/nudge/\(nudgeId)/reply", body: [
+        try await send("/nudge/\(nudgeId)/reply", body: [
             "outcome": outcome.rawValue,
             "friction": friction ?? ""
         ])
@@ -42,7 +56,7 @@ actor CoachAPI {
 
     // HealthKit signals — used for BOTH timing context AND verification (Section 8.1).
     func reportHealthSignal(kind: String, value: Double, at: Date) async {
-        _ = try? await post("/healthkit/signal", body: [
+        try? await send("/healthkit/signal", body: [
             "kind": kind, "value": value, "at": ISO8601DateFormatter().string(from: at)
         ])
     }
@@ -65,6 +79,15 @@ actor CoachAPI {
         let (data, _) = try await session.data(for: req)
         return try JSONDecoder.coach.decode(T.self, from: data)
     }
+
+    private func send(_ path: String, body: [String: Any]) async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue(userId, forHTTPHeaderField: "X-User-Id")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await session.data(for: req)
+    }
 }
 
 struct IntakeQuestion: Codable, Identifiable {
@@ -83,6 +106,18 @@ struct FollowUp: Codable, Identifiable {
     let actionTitle: String
     let prompt: String
     var id: String { nudgeId }
+}
+
+private struct IntakeQuestionsResponse: Codable {
+    let questions: [IntakeQuestion]
+}
+
+private struct FollowupsResponse: Codable {
+    let followups: [FollowUp]
+}
+
+private struct MilestonesResponse: Codable {
+    let milestones: [Milestone]
 }
 
 private extension JSONDecoder {

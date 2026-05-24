@@ -3,8 +3,6 @@
 // This is a thin client (Section 8.3). The brain runs server-side; this app
 // renders the world, fires HealthKit signals back to the brain, and presents
 // nudges + one-tap replies that land via APNs.
-//
-// SCAFFOLD: needs an Xcode project + APNs key + HealthKit capability to build.
 
 import SwiftUI
 import UserNotifications
@@ -12,10 +10,15 @@ import UserNotifications
 @main
 struct TheCoachApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+    @StateObject private var sessionStore = SessionStore()
+    @StateObject private var backendHealth = BackendHealth()
 
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environmentObject(sessionStore)
+                .environmentObject(backendHealth)
+                .task { await backendHealth.probe() }
         }
     }
 }
@@ -53,20 +56,41 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 }
 
 struct RootView: View {
+    @EnvironmentObject var sessionStore: SessionStore
+    @EnvironmentObject var backendHealth: BackendHealth
     @StateObject private var router = NudgeReplyRouter.shared
-    @StateObject private var session = SessionState()
 
     var body: some View {
         Group {
-            if session.hasCompletedIntake {
-                WorldView()
-            } else {
-                IntakeView()
+            switch backendHealth.status {
+            case .checking:
+                BackendLoadingView()
+            case .unreachable(let message):
+                ErrorView(
+                    title: "Can't reach the coach",
+                    message: message,
+                    retry: { await backendHealth.probe() }
+                )
+            case .reachable:
+                if sessionStore.hasCompletedIntake {
+                    WorldView()
+                } else {
+                    IntakeView()
+                }
             }
         }
         .sheet(item: $router.presented) { reply in
             NudgeReplyView(nudgeId: reply.nudgeId, defaultOutcome: reply.actionId)
         }
-        .environmentObject(session)
+    }
+}
+
+private struct BackendLoadingView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView().controlSize(.large)
+            Text("Connecting…").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

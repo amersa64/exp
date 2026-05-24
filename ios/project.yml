@@ -1,0 +1,39 @@
+name: TheCoach
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+    SWIFT_VERSION: 5.0
+    TARGETED_DEVICE_FAMILY: "1,2"
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+targets:
+  TheCoach:
+    type: application
+    platform: iOS
+    sources:
+      - path: TheCoach
+    info:
+      path: TheCoach/Info.plist
+      properties:
+        CFBundleDisplayName: The Coach
+        NSHealthShareUsageDescription: Read workout data to verify completed sessions and time nudges.
+        NSHealthUpdateUsageDescription: Not used.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            127.0.0.1:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.TheCoach
+        GENERATE_INFOPLIST_FILE: NO

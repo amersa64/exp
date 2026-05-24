@@ -55,7 +55,3 @@ final class NudgeReplyRouter: ObservableObject {
     }
 }
 
-final class SessionState: ObservableObject {
-    @Published var hasCompletedIntake: Bool = false
-    @Published var handoffMessage: String?
-}
