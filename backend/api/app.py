@@ -1,0 +1,207 @@
+"""
+HTTP layer for the brain.
+
+Auth is intentionally NOT in this build — the spec is for a personal copilot
+and the brief never asked for multi-tenant. When that day comes, an OAuth
+bearer middleware drops in here. For now, the user_id comes from a header so
+the iOS client and curl-driven tests both work.
+
+Every endpoint maps directly to a Coach method — no business logic lives here.
+This layer is purely a port. If you find yourself writing coaching logic in a
+route handler, move it to `coach/lifecycle.py`.
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any
+
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
+
+from coach.integrations import StubCalendarClient, StubHealthKitClient
+from coach.lifecycle import Coach
+from coach.llm import LLMClient
+from coach.models import NudgeOutcome
+from coach.push import LoggingPushDelivery
+from coach.scheduler import Scheduler, active_users_from_store
+from coach.store import Store
+
+
+# ---- bootstrap singletons --------------------------------------------------
+
+DB_PATH = os.environ.get("COACH_DB", "coach.db")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.store = Store(DB_PATH)
+    app.state.llm = LLMClient()
+    app.state.calendar = StubCalendarClient()
+    app.state.healthkit = StubHealthKitClient()
+    app.state.push = LoggingPushDelivery()
+    app.state.scheduler = Scheduler(
+        store=app.state.store,
+        llm=app.state.llm,
+        calendar=app.state.calendar,
+        healthkit=app.state.healthkit,
+        push=app.state.push,
+        active_users=active_users_from_store(app.state.store),
+    )
+    yield
+
+
+app = FastAPI(title="The Coach — brain", lifespan=lifespan)
+
+
+def _coach_for(user_id: str, domain: str = "fitness") -> Coach:
+    s = app.state
+    c = Coach(user_id, domain, s.store, s.llm, s.calendar, s.healthkit)
+    c.nudge_engine.push = s.push
+    return c
+
+
+def _uid(x_user_id: str | None) -> str:
+    if not x_user_id:
+        raise HTTPException(401, "X-User-Id header required")
+    return x_user_id
+
+
+# ---- request/response models ----------------------------------------------
+
+class IntakeSubmit(BaseModel):
+    answers: dict[str, str]
+    identity_statement: str | None = None  # if present, also runs PROGRAM stage
+
+
+class IntakeResponse(BaseModel):
+    summary: str
+    handoff: str | None = None
+    program_built: bool = False
+
+
+class ReplyBody(BaseModel):
+    outcome: NudgeOutcome
+    friction: str | None = None
+
+
+class HealthSignalBody(BaseModel):
+    kind: str
+    value: float
+    at: datetime | None = None
+    metadata: dict[str, str] = {}
+
+
+class PushRegister(BaseModel):
+    token: str
+    platform: str = "ios"
+
+
+# ---- routes ----------------------------------------------------------------
+
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/intake/questions")
+def intake_questions(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    coach = _coach_for(_uid(x_user_id))
+    qs = coach.intake_questions()
+    return {"questions": [{"key": q.key, "q": q.q} for q in qs]}
+
+
+@app.post("/intake/submit", response_model=IntakeResponse)
+def intake_submit(body: IntakeSubmit, x_user_id: str = Header(default=None)) -> IntakeResponse:
+    coach = _coach_for(_uid(x_user_id))
+    profile, handoff = coach.record_intake(body.answers)
+    if handoff:
+        return IntakeResponse(summary="Held — see handoff.", handoff=handoff)
+    program_built = False
+    if body.identity_statement:
+        coach.build_program(body.identity_statement)
+        program_built = True
+    return IntakeResponse(
+        summary=profile.derived.get("summary", "Profile saved."),
+        program_built=program_built,
+    )
+
+
+@app.get("/world")
+def get_world(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    w = app.state.store.get_world(_uid(x_user_id))
+    if w is None:
+        raise HTTPException(404, "no world yet — finish intake + program")
+    return w.model_dump()
+
+
+@app.get("/followups")
+def get_followups(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    coach = _coach_for(_uid(x_user_id))
+    fs = coach.open_followups()
+    return {"followups": [
+        {"nudge_id": f.nudge_id, "action_title": f.action_title, "prompt": f.prompt}
+        for f in fs
+    ]}
+
+
+@app.post("/nudge/{nudge_id}/reply")
+def reply(nudge_id: str, body: ReplyBody, x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    coach = _coach_for(_uid(x_user_id))
+    nudge, ripples, handoff = coach.record_report(nudge_id, body.outcome, body.friction)
+    rationale = coach.adapt()
+    return {
+        "ok": True,
+        "ripples": ripples,
+        "handoff": handoff,
+        "adaptation": rationale,
+        "outcome": nudge.outcome.value,
+    }
+
+
+@app.post("/healthkit/signal")
+def healthkit_signal(body: HealthSignalBody, x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    user_id = _uid(x_user_id)
+    from coach.integrations import HealthSignal
+    sig = HealthSignal(
+        user_id=user_id,
+        kind=body.kind,
+        at=body.at or datetime.now(timezone.utc),
+        value=body.value,
+        metadata=body.metadata,
+    )
+    app.state.healthkit.seed(sig)
+    # If it's a workout, try to verify against the most-recent prescribed action.
+    ripples: list[str] = []
+    if body.kind == "workout":
+        coach = _coach_for(user_id)
+        # Find the most recent prescribed action.
+        actions = app.state.store.all_actions()
+        actions = [a for a in actions if a.parent_habit_id]
+        if actions:
+            latest = max(actions, key=lambda a: a.prescribed_for or datetime.min.replace(tzinfo=timezone.utc))
+            ripples = coach.record_sensor_verification(
+                latest.id, "healthkit.workout",
+                {"duration_min": body.value, **body.metadata},
+            )
+    return {"ok": True, "ripples": ripples}
+
+
+@app.post("/push/register")
+def push_register(body: PushRegister, x_user_id: str = Header(default=None)) -> dict[str, str]:
+    app.state.push.register_device(_uid(x_user_id), body.token, body.platform)
+    return {"ok": "registered"}
+
+
+@app.post("/scheduler/tick")
+def scheduler_tick() -> dict[str, Any]:
+    """Manually trigger a scheduler tick — for tests + ops. In prod a cron hits this."""
+    res = app.state.scheduler.run_tick()
+    return {
+        "users_evaluated": res.users_evaluated,
+        "nudges_fired": [n.id for n in res.nudges_fired],
+        "silences": res.silences,
+        "followups_owed": res.followups_owed,
+    }

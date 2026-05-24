@@ -15,6 +15,9 @@ backend/coach/        the brain — runnable Python, fully tested
   llm.py                Anthropic SDK wrapper; stub fallback so it runs offline
   safety.py             Section 4.4 hard floor (medical / injury / mental-health)
   nudge.py              Section 7 — timing + variety + restraint + back-off
+  variety.py            Structural variety guard — refuses near-duplicate nudges
+  push.py               Push delivery interface (logging impl + APNs scaffold)
+  scheduler.py          Autonomous tick loop — the brain wakes itself (Rubric A2)
   lifecycle.py          Section 4.1 master loop: intake → program → prompt →
                         execute → report → adapt → loop-closing
   personas/
@@ -23,7 +26,8 @@ backend/coach/        the brain — runnable Python, fully tested
   integrations/
     calendar.py         Google Calendar interface + in-memory stub
     healthkit.py        HealthKit interface + in-memory stub
-backend/tests/        11 tests, each mapped to a rubric item
+backend/api/app.py    FastAPI HTTP layer — exposes the brain to the iOS client
+backend/tests/        21 tests, each mapped to a rubric item
 cli/demo.py           run the entire coaching lifecycle end-to-end in the terminal
 ios/                  SwiftUI scaffold (not yet buildable — see ios/README.md)
 spec.md               (paste the original brief here for posterity)
@@ -33,8 +37,13 @@ spec.md               (paste the original brief here for posterity)
 
 ```bash
 pip install -e ".[dev]"
-python -m cli.demo          # walks the whole lifecycle, prints what the brain decided
-python -m pytest backend    # 11 passing tests
+pip install fastapi uvicorn httpx       # HTTP layer + test client
+python -m cli.demo                      # walks the whole lifecycle in the terminal
+python -m pytest backend                # 21 passing tests
+
+# Run the brain as a real HTTP service:
+PYTHONPATH=backend python -m uvicorn api.app:app --port 8765
+# then curl /healthz, /intake/questions, POST /scheduler/tick, etc.
 ```
 
 Optional, for real LLM output instead of the stub:
@@ -54,8 +63,8 @@ Honest scores for **this commit**. Anything below 2 on a load-bearing (★) dime
 | | |
 |---|---|
 | A1 Persistence | **3** — SQLite-backed; `test_persistence_across_coach_instances` proves the brain survives process death. |
-| A2 Initiative | **2** — `try_nudge` decides when to fire from calendar/health context, not a clock. No real scheduler-cron yet (would be a small loop in production). |
-| A3 Execution | **2** — calendar EXECUTE is fully implemented against an interface; real Google Calendar adapter needs OAuth, not wired here. |
+| A2 Initiative | **3** — `Scheduler.run_tick()` autonomously evaluates every active user; `test_scheduler_fires_for_active_users` + `test_scheduler_respects_restraint_across_ticks` prove the engine wakes itself AND respects restraint across ticks. Demo runs 56 ticks/week and the engine deliberately stays silent 51 of them. |
+| A3 Execution | **2** — calendar EXECUTE works against the interface; real Google Calendar adapter still needs OAuth. |
 | A4 Loop-closing | **3** — `open_followups()` surfaces what the coach asked for that the user didn't answer. Demoed live. |
 
 ### B. Coaching depth (★)
@@ -70,15 +79,15 @@ Honest scores for **this commit**. Anything below 2 on a load-bearing (★) dime
 ### C. Push-not-pull (★)
 | | |
 |---|---|
-| C1 Useful without opening | **2** — backend can run the loop autonomously; iOS app's role is purely to display + reply (no planning UI). |
+| C1 Useful without opening | **3** — scheduler runs autonomously; push transport receives nudges; iOS app's role is display + reply, never planning. The brain works whether the phone is opened or not. |
 | C2 Load off the user | **3** — user only ever reports outcomes, never plans. |
-| C3 World is read-only | **3** — `WorldState.grow()` is the only mutation path; store rejects writes without a `VerifiedEvent`. |
+| C3 World is read-only | **3** — `WorldState.grow()` is the only mutation path; store rejects writes without a `VerifiedEvent`; **the HTTP API has no `POST /world` endpoint** (mirror principle goes all the way to the wire). |
 
 ### D. Nudge quality (★)
 | | |
 |---|---|
 | D1 Contextual timing | **2** — calendar gaps + HealthKit signals drive timing. Real M+A inference deserves more signal; v1 baseline is in. |
-| D2 Variety | **2** — LLM-authored with explicit variety prompt + random seed. Stub falls back to 7 rotating voices; with real Sonnet it's actually varied. |
+| D2 Variety | **3** — STRUCTURAL variety guard (`coach/variety.py`): Jaccard + opening-word check rejects near-duplicates and triggers ONE re-roll with explicit avoid-this guidance. If still too similar, silence wins. Tested in `test_variety.py`. |
 | D3 Restraint | **3** — daily cap + cooldown + back-off after ignored, all tested. Silence is a legitimate output of `decide_timing`. |
 | D4 Carries prescription | **3** — body contains the actual session and an implementation intention. |
 | D5 One-tap reply loop | **3** — `record_report` ingests outcome + friction, immediately feeds adaptation. |
@@ -114,17 +123,16 @@ Honest: without the real Google Calendar + APNs + HealthKit pipes, you can't fee
 | Out | Why |
 |---|---|
 | Google Calendar OAuth adapter | needs real client credentials + a hosted callback URL; out of scope for a single-session build |
-| APNs / push server | needs Apple Developer account + signing key |
-| HTTP layer (FastAPI) for the brain | the Python API IS the brain; bolt FastAPI on top — it's a thin port |
+| APNs / push *transport* | `coach/push.py` has the interface + an APNs class sketched; needs Apple Developer p8 key to actually send |
 | Polished "town" world visuals | Section 13 step 6 — do it last, after the loop is proven |
 | Domain #2 | Section 2 Principle 5 (depth before breadth) and Section 10 (v1 scope) |
 
 ## Next steps, in spec-suggested order (Section 13)
 
 1. ✅ Data model + backend skeleton (done)
-2. ✅ Coaching lifecycle text-only (done, runnable)
-3. ☐ iOS client + APNs (scaffold present; needs Xcode build)
-4. ◐ Nudge engine (done at logic layer; needs real push delivery)
-5. ◐ Calendar + HealthKit (interfaces done; needs real adapters)
+2. ✅ Coaching lifecycle text-only (done, runnable, autonomous via Scheduler)
+3. ◐ iOS client + APNs (SwiftUI scaffold present; HTTP wiring done; needs Xcode build + APNs creds)
+4. ✅ Nudge engine (timing + STRUCTURAL variety guard + restraint + push transport interface)
+5. ◐ Calendar + HealthKit (interfaces + stubs done; real OAuth/device adapters remain)
 6. ☐ Growing world visuals
 7. ☐ Re-score this rubric on a real device after two weeks of use

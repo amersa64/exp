@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS verified_events (id TEXT PRIMARY KEY, user_id TEXT, a
 class Store:
     def __init__(self, path: str | Path = ":memory:") -> None:
         self.path = str(path)
-        self.conn = sqlite3.connect(self.path)
+        # check_same_thread=False is fine here: FastAPI uses a worker pool, and
+        # all our writes go through explicit conn.commit(). We never share an
+        # in-flight transaction across threads.
+        self.conn = sqlite3.connect(self.path, check_same_thread=False)
         self.conn.executescript(_SCHEMA)
         self.conn.commit()
 

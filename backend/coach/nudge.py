@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 
+from . import variety
 from .integrations import (
     CalendarClient,
     FreeSlot,
@@ -33,6 +34,7 @@ from .models import (
     Session,
 )
 from .personas.base import Persona
+from .push import PushDelivery, LoggingPushDelivery
 from .store import Store
 
 
@@ -62,12 +64,14 @@ class NudgeEngine:
         persona: Persona,
         calendar: CalendarClient,
         healthkit: HealthKitClient,
+        push: PushDelivery | None = None,
     ) -> None:
         self.store = store
         self.llm = llm
         self.persona = persona
         self.calendar = calendar
         self.healthkit = healthkit
+        self.push: PushDelivery = push or LoggingPushDelivery()
 
     # -- TIMING ------------------------------------------------------------
 
@@ -140,50 +144,74 @@ class NudgeEngine:
 
     # -- CONTENT ----------------------------------------------------------
 
-    def author_nudge_text(self, action: AtomicAction, session: Session | None, reason: str) -> dict:
+    def author_nudge_text(
+        self,
+        action: AtomicAction,
+        session: Session | None,
+        reason: str,
+        user_id: str,
+    ) -> dict | None:
         """
-        Ask the LLM to write the nudge in the persona's voice.
+        Ask the LLM to write the nudge in the persona's voice, then run the
+        variety guard. If the candidate looks too similar to recent nudges,
+        re-roll ONCE with explicit avoid-this guidance. If still bad, return
+        None — silence is a valid output (Rubric D3).
+        """
+        recent_bodies = [n.body for n in self.store.recent_nudges(user_id, limit=8)]
 
-        The prompt deliberately injects variety and constrains length so the
-        text is one tight push notification, carrying the actual prescription.
-        """
-        system = (
-            f"[TASK:nudge_text]\n"
-            f"You are the user's domain coach.\n"
-            f"Voice: {self.persona.voice}\n\n"
-            "Write a SINGLE push notification (under 220 chars) that:\n"
-            "  - Names the specific action, not a category.\n"
-            "  - Uses an implementation intention (\"when X, I will Y\").\n"
-            "  - Carries one of these flavors at random — pick a different one each time:\n"
-            "    [direct prescription] [reframe / lower the bar] [challenge / earn it]\n"
-            "    [curiosity question]   [environmental cue]      [data callback to last session].\n"
-            "  - NEVER opens with the same template.\n"
-            "  - No moralizing. No 'journey'. No emojis."
-        )
-        action_line = action.description
-        cue = action.cue or "right now"
-        body_brief = ""
-        if session:
-            body_brief = " | ".join(
-                f"{e.name} {e.sets}x{e.reps}" + (f"@{int(e.load_lb)}" if e.load_lb else "")
-                for e in session.exercises
+        def _roll(extra: str = "") -> dict:
+            system = (
+                f"[TASK:nudge_text]\n"
+                f"You are the user's domain coach.\n"
+                f"Voice: {self.persona.voice}\n\n"
+                "Write a SINGLE push notification (under 220 chars) that:\n"
+                "  - Names the specific action, not a category.\n"
+                "  - Uses an implementation intention (\"when X, I will Y\").\n"
+                "  - Carries one of these flavors at random — pick a different one each time:\n"
+                "    [direct prescription] [reframe / lower the bar] [challenge / earn it]\n"
+                "    [curiosity question]   [environmental cue]      [data callback to last session].\n"
+                "  - NEVER opens with the same template.\n"
+                "  - No moralizing. No 'journey'. No emojis."
+                + (("\n\n" + extra) if extra else "")
             )
-        user_msg = (
-            f"action: {action.title}\n"
-            f"prescription: {action_line}\n"
-            f"session_brief: {body_brief}\n"
-            f"cue: {cue}\n"
-            f"timing_reason: {reason}\n"
-            f"variety_seed: {random.randint(0, 10_000)}"
-        )
-        try:
-            return self.llm.complete_json(system, user_msg, max_tokens=400)
-        except Exception:
-            return {
-                "headline": "It's the moment.",
-                "body": f"{action.title} — {action_line}. {cue.capitalize()}, start.",
-                "implementation_intention": f"When this nudge fires, I will start {action.title}.",
-            }
+            action_line = action.description
+            cue = action.cue or "right now"
+            body_brief = ""
+            if session:
+                body_brief = " | ".join(
+                    f"{e.name} {e.sets}x{e.reps}" + (f"@{int(e.load_lb)}" if e.load_lb else "")
+                    for e in session.exercises
+                )
+            user_msg = (
+                f"action: {action.title}\n"
+                f"prescription: {action_line}\n"
+                f"session_brief: {body_brief}\n"
+                f"cue: {cue}\n"
+                f"timing_reason: {reason}\n"
+                f"variety_seed: {random.randint(0, 10_000)}"
+            )
+            try:
+                return self.llm.complete_json(system, user_msg, max_tokens=400)
+            except Exception:
+                return {
+                    "headline": "It's the moment.",
+                    "body": f"{action.title} — {action_line}. {cue.capitalize()}, start.",
+                    "implementation_intention": f"When this nudge fires, I will start {action.title}.",
+                }
+
+        cand = _roll()
+        verdict = variety.check(cand.get("body", ""), recent_bodies)
+        if verdict.accept:
+            return cand
+
+        # One re-roll with explicit avoid guidance.
+        avoid_block = "AVOID THESE OPENINGS AND PHRASINGS — they were used recently:\n" + \
+                      "\n".join(f"  - {a}" for a in verdict.avoid_phrases)
+        cand2 = _roll(extra=avoid_block)
+        verdict2 = variety.check(cand2.get("body", ""), recent_bodies)
+        if verdict2.accept:
+            return cand2
+        return None  # silence — better than repetition
 
     # -- FIRE -------------------------------------------------------------
 
@@ -197,7 +225,10 @@ class NudgeEngine:
         decision = self.decide_timing(user_id, action, now)
         if not decision.should_fire:
             return None
-        body = self.author_nudge_text(action, session, decision.reason)
+        body = self.author_nudge_text(action, session, decision.reason, user_id)
+        if body is None:
+            # Variety guard refused — silence (Rubric D3 + D2).
+            return None
         nudge = Nudge(
             user_id=user_id,
             action_id=action.id,
@@ -209,6 +240,11 @@ class NudgeEngine:
             fired_because=decision.reason,
         )
         self.store.save_nudge(nudge)
+        # Hand off to the push transport. LoggingPushDelivery prints; APNs in prod.
+        try:
+            self.push.deliver(user_id=user_id, nudge=nudge)
+        except Exception:
+            pass  # transport failure must not lose the nudge — it's already persisted
         return nudge
 
     # -- AUTO-IGNORE SWEEPER ---------------------------------------------

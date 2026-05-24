@@ -32,6 +32,8 @@ from coach.integrations import (
 from coach.lifecycle import Coach
 from coach.llm import LLMClient
 from coach.models import NudgeOutcome
+from coach.push import LoggingPushDelivery
+from coach.scheduler import Scheduler, active_users_from_store
 from coach.store import Store
 
 
@@ -48,9 +50,11 @@ def main() -> int:
     llm = LLMClient()
     cal = StubCalendarClient()
     hk = StubHealthKitClient()
+    push = LoggingPushDelivery(verbose=True)
 
     user_id = "demo-user"
     coach = Coach(user_id, "fitness", store, llm, cal, hk)
+    coach.nudge_engine.push = push
 
     if llm._client is None:
         print("[i] No ANTHROPIC_API_KEY — running with stub LLM. Real Sonnet text appears when the key is set.\n")
@@ -165,8 +169,28 @@ def main() -> int:
         print("  ✗ FAIL — the world was mutated without a verified event. BUG.")
         return 1
 
+    # ---- Autonomous scheduler proves Initiative (Rubric A2) ----------------
+    _line("AUTONOMOUS SCHEDULER — the brain wakes itself (Rubric A2)")
+    sched = Scheduler(
+        store=store, llm=llm, calendar=cal, healthkit=hk, push=push,
+        active_users=active_users_from_store(store),
+    )
+    # Fast-forward across a week of 1-hour ticks. The engine will fire only
+    # when its decision rules say to — most ticks will be silent. That's the
+    # whole point of restraint (Rubric D3).
+    fired = 0
+    silences = 0
+    for day in range(7):
+        for hour in range(7, 22, 2):
+            tick_now = today + timedelta(days=day + 3, hours=hour - today.hour)
+            res = sched.run_tick(now=tick_now)
+            fired += len(res.nudges_fired)
+            silences += res.silences
+    print(f"  Over 7 simulated days: ticks fired {fired} nudge(s), stayed silent {silences} time(s).")
+    print(f"  Push transport received: {len(push.records)} delivery record(s).")
+
     _line("END — full lifecycle demonstrated")
-    print("  All six stages of Section 4.1 exercised.")
+    print("  All six stages of Section 4.1 exercised. Scheduler runs autonomously.")
     print(f"  Final world: currency={store.get_world(user_id).currency}, "
           f"streak={store.get_world(user_id).streak_days}")
     return 0

@@ -8,7 +8,9 @@ import Foundation
 
 actor CoachAPI {
     static let shared = CoachAPI()
-    private let baseURL = URL(string: "https://coach.example.com")!
+    // Backend brain — see backend/api/app.py. Override per-environment via Info.plist.
+    private let baseURL = URL(string: "http://127.0.0.1:8765")!
+    private let userId = "demo-user"  // single-user v1 (Section 10)
     private let session: URLSession = .shared
 
     func registerPushToken(_ token: String) async {
@@ -48,7 +50,9 @@ actor CoachAPI {
     // -- plumbing --
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let (data, _) = try await session.data(from: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        req.addValue(userId, forHTTPHeaderField: "X-User-Id")
+        let (data, _) = try await session.data(for: req)
         return try JSONDecoder.coach.decode(T.self, from: data)
     }
 
@@ -56,6 +60,7 @@ actor CoachAPI {
         var req = URLRequest(url: baseURL.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.addValue(userId, forHTTPHeaderField: "X-User-Id")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, _) = try await session.data(for: req)
         return try JSONDecoder.coach.decode(T.self, from: data)
