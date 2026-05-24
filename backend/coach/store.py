@@ -90,6 +90,18 @@ class Store:
     def get_action(self, action_id: str) -> AtomicAction | None:
         return self._get("actions", action_id, AtomicAction)
 
+    def get_identity_for_user(self, user_id: str) -> Identity | None:
+        for ident in self._all("identities", Identity):
+            if ident.user_id == user_id:
+                return ident
+        return None
+
+    def list_milestones_for_user(self, user_id: str) -> list[Milestone]:
+        ident = self.get_identity_for_user(user_id)
+        if ident is None:
+            return []
+        return [m for m in self._all("milestones", Milestone) if m.parent_identity_id == ident.id]
+
     # -- profile / program ---------------------------------------------------
 
     def save_profile(self, x: UserProfile) -> None: self._put("profiles", x.user_id, x)

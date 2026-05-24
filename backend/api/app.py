@@ -137,6 +137,20 @@ def get_world(x_user_id: str = Header(default=None)) -> dict[str, Any]:
     return w.model_dump()
 
 
+@app.get("/identity")
+def get_identity(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    ident = app.state.store.get_identity_for_user(_uid(x_user_id))
+    if ident is None:
+        raise HTTPException(404, "no identity yet — finish intake + program")
+    return ident.model_dump()
+
+
+@app.get("/milestones")
+def get_milestones(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    ms = app.state.store.list_milestones_for_user(_uid(x_user_id))
+    return {"milestones": [m.model_dump() for m in ms]}
+
+
 @app.get("/followups")
 def get_followups(x_user_id: str = Header(default=None)) -> dict[str, Any]:
     coach = _coach_for(_uid(x_user_id))

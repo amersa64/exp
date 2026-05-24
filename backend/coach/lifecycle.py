@@ -131,7 +131,7 @@ class Coach:
         if not profile:
             raise RuntimeError("INTAKE must run before PROGRAM. See Section 4.1.")
 
-        identity = Identity(statement=identity_statement, domain=self.domain)
+        identity = Identity(user_id=self.user_id, statement=identity_statement, domain=self.domain)
         self.store.save_identity(identity)
 
         program, milestones, habits = self.persona.build_program(profile)

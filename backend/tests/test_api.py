@@ -67,6 +67,36 @@ def test_full_flow(client):
     assert r.json()["currency"] > 0
 
 
+def test_identity_and_milestones_after_program(client):
+    """Rubric E2 — the four-level hierarchy must be reflectable to the client
+    so WorldView can render the user's actual identity statement and the real
+    milestones from their program, not hardcoded strings."""
+    headers = {"X-User-Id": "carol"}
+    # No identity / milestones yet.
+    assert client.get("/identity", headers=headers).status_code == 404
+    assert client.get("/milestones", headers=headers).json() == {"milestones": []}
+
+    client.post("/intake/submit", json={
+        "answers": {"experience": "novice", "days_per_week": "3", "injuries": "none"},
+        "identity_statement": "I am someone who shows up",
+    }, headers=headers)
+
+    r = client.get("/identity", headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["statement"] == "I am someone who shows up"
+    assert body["domain"] == "fitness"
+    assert body["user_id"] == "carol"
+
+    r = client.get("/milestones", headers=headers)
+    assert r.status_code == 200
+    ms = r.json()["milestones"]
+    assert len(ms) >= 1
+    # Every milestone must trace back to this user's identity (mirror integrity).
+    ident_id = body["id"]
+    assert all(m["parent_identity_id"] == ident_id for m in ms)
+
+
 def test_safety_handoff_via_api(client):
     headers = {"X-User-Id": "bob"}
     r = client.post("/intake/submit", json={

@@ -83,6 +83,7 @@ class Milestone(BaseModel):
 class Identity(BaseModel):
     """Level 1 — who the user is becoming. Identity-based, not outcome-based."""
     id: str = Field(default_factory=_uid)
+    user_id: str
     statement: str                              # "I am a strong, energetic person"
     domain: str                                 # "fitness"
     created_at: datetime = Field(default_factory=_now)
