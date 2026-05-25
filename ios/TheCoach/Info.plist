@@ -20,6 +20,8 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>CoachBackendURL</key>
+	<string>http://127.0.0.1:8765</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -39,5 +41,7 @@
 	<string>Read workout data to verify completed sessions and time nudges.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Not used.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
 </dict>
 </plist>

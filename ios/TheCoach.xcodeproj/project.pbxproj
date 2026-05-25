@@ -10,6 +10,7 @@
 		2A0B65BCC63B870A15F2834C /* NudgeReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */; };
 		55982EFC73FA35871B8BE2C6 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0645FB02D513439315BE5608 /* SessionStore.swift */; };
 		57ABB599E98DDC357B2D6EAB /* BackendHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 055877961A47BD4B52B5C3A3 /* BackendHealth.swift */; };
+		8330F497273EE57E9E34BE52 /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F8A96201B8A5DC8DF159 /* TrainView.swift */; };
 		9482EC06007EB0B69D1C3D9B /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1535909A05416C4A043EC5AF /* ErrorView.swift */; };
 		9D13F21966F1E6DF9A936C25 /* Hierarchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124267EA82CBE09799FE3011 /* Hierarchy.swift */; };
 		A1B72AC4A5D750BA84BC714B /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2912E6451B7B0BF4F9F7FA /* HealthKitService.swift */; };
@@ -27,6 +28,7 @@
 		1535909A05416C4A043EC5AF /* ErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorView.swift; sourceTree = "<group>"; };
 		1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeReplyView.swift; sourceTree = "<group>"; };
 		1D3C6E6379ABD3A478A5DAAE /* TheCoach.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TheCoach.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2333F8A96201B8A5DC8DF159 /* TrainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainView.swift; sourceTree = "<group>"; };
 		434CD44D6865A9D5251FCCDB /* WorldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldView.swift; sourceTree = "<group>"; };
 		6FE55F611552D59386F45FF3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AB221AD57118262E94B16238 /* TheCoachApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TheCoachApp.swift; sourceTree = "<group>"; };
@@ -49,6 +51,7 @@
 				1535909A05416C4A043EC5AF /* ErrorView.swift */,
 				0B2427FF0AD09D64BBC77998 /* IntakeView.swift */,
 				1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */,
+				2333F8A96201B8A5DC8DF159 /* TrainView.swift */,
 				434CD44D6865A9D5251FCCDB /* WorldView.swift */,
 			);
 			path = Views;
@@ -123,7 +126,8 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					1824965E38197499E1B3EBE1 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 7QF5D7PJL5;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -160,6 +164,7 @@
 				2A0B65BCC63B870A15F2834C /* NudgeReplyView.swift in Sources */,
 				55982EFC73FA35871B8BE2C6 /* SessionStore.swift in Sources */,
 				B32D11F71F2A3ED5FC09A5C4 /* TheCoachApp.swift in Sources */,
+				8330F497273EE57E9E34BE52 /* TrainView.swift in Sources */,
 				D7CE1AE98F7DBA840C260D87 /* WorldView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -178,7 +183,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.TheCoach;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.zaimler.TheCoach;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -195,7 +200,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.TheCoach;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.zaimler.TheCoach;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -234,11 +239,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7QF5D7PJL5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -255,9 +259,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -305,11 +306,10 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 7QF5D7PJL5;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -320,9 +320,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;

@@ -55,8 +55,13 @@ class AtomicAction(BaseModel):
     description: str                            # the actual prescription
     tracking: TrackingSpec
     parent_habit_id: str
-    # Implementation intention scaffold — "When X, I will do Y" (Section 3.2)
+    # Implementation intention scaffold (Atomic Habits ch.5): "When X, I will Y at Z"
     cue: str | None = None                      # "after morning coffee"
+    location: str | None = None                 # "at the gym" / "in the garage"
+    # Minimum-viable variant of this action — the 2-minute-rule fallback
+    # (Atomic Habits ch.13). Used when receptivity is low so the user does
+    # SOMETHING rather than nothing.
+    minimum_dose: str | None = None             # "just put on shoes + 5 squats"
     # Bookkeeping
     prescribed_for: datetime | None = None      # when the coach scheduled it
     expected_minutes: int = 20
@@ -86,6 +91,13 @@ class Identity(BaseModel):
     user_id: str
     statement: str                              # "I am a strong, energetic person"
     domain: str                                 # "fitness"
+    # Atomic Habits ch.2: "Every action you take is a vote for the type of
+    # person you wish to become." We tally those votes from VerifiedEvents.
+    # The count is derived (not user-settable) — kept here for fast reads.
+    votes_cast: int = 0
+    # The anchor habit captured at intake — used to author implementation
+    # intentions ("right after MORNING_ANCHOR, I will…"). Ch.5 habit stacking.
+    anchor_habit: str | None = None
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -189,6 +201,11 @@ class WorldState(BaseModel):
     living_systems: dict[str, float] = Field(default_factory=dict)
     # 0.0 = wilting, 1.0 = thriving — keyed by habit_id
 
+    # Atomic Habits ch.2: votes cast toward the identity. Mirrored here so
+    # the iOS client can show "127 votes for who you're becoming" without a
+    # second round-trip. Grown only via grow() — same mirror rules apply.
+    identity_votes: int = 0
+
     # Private guard: an internal flag that grow() must set, and that any persistence
     # layer can use to assert this object came from a verified mutation path.
     _last_growth_source: Optional[str] = PrivateAttr(default=None)
@@ -229,6 +246,11 @@ class WorldState(BaseModel):
         cur = self.living_systems.get(habit_id, 0.5)
         self.living_systems[habit_id] = min(1.0, cur + 0.15)
         ripples.append("a living system in the world is thriving")
+
+        # 4) Identity vote — Atomic Habits ch.2. Every verified session is one
+        # more vote for who the user is becoming. Surfaced on the summit.
+        self.identity_votes += 1
+        ripples.append(f"another vote for who you're becoming ({self.identity_votes} total)")
 
         self._last_growth_source = event.id
         return ripples

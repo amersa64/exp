@@ -13,8 +13,15 @@ final class BackendHealth: ObservableObject {
     private let baseURL: URL
     private let session: URLSession
 
-    init(baseURL: URL = URL(string: "http://127.0.0.1:8765")!) {
-        self.baseURL = baseURL
+    init(baseURL: URL? = nil) {
+        if let baseURL {
+            self.baseURL = baseURL
+        } else if let s = Bundle.main.object(forInfoDictionaryKey: "CoachBackendURL") as? String,
+                  let url = URL(string: s) {
+            self.baseURL = url
+        } else {
+            self.baseURL = URL(string: "http://127.0.0.1:8765")!
+        }
         let cfg = URLSessionConfiguration.default
         cfg.timeoutIntervalForRequest = 3
         cfg.timeoutIntervalForResource = 3

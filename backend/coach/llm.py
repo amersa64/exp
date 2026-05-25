@@ -76,14 +76,21 @@ class LLMClient:
 # realistic JSON the persona can ingest.
 # ---------------------------------------------------------------------------
 
-_NUDGE_VOICES = [
-    "Laptop's about to close. Shoes by the door — {action}. Tap when you're out.",
-    "Window's open right now: {action}. 20-min version is fine; consistency > intensity.",
-    "Quick check — energy 1–5? If 3 or up: {action}. If 2 or under: 2-minute version, no negotiation.",
-    "Tomorrow's not a real plan; today is. {action} — 25 min, then done.",
-    "Last session you reported it felt easy. Today we earn it: {action}.",
-    "Heads up: gap on your calendar 5:30–6:15. {action} fits there.",
-    "Half-rep at half-effort beats a perfect plan you didn't do. {action} — start.",
+_NUDGE_VOICES_FULL = [
+    "{cue_cap}. Shoes by the door, head out for {action}. Tap when you're out the door.",
+    "Window's open: {action} at {location}. 20-min version is fine — consistency > intensity.",
+    "Quick check — energy 1–5? If 3+: {action}. If 2 or under: bad-day plan instead, no negotiation.",
+    "Tomorrow's not a real plan; today is. {cue_cap}: head to {location} for {action}.",
+    "Last session you reported it felt easy. Today we earn it: {action} at {location}.",
+    "Heads up — gap on your calendar opens soon. {cue_cap}, start {action} at {location}.",
+    "Half-rep at half-effort beats a perfect plan you skipped. {action} at {location} — start.",
+]
+
+_NUDGE_VOICES_MIN = [
+    "Bad-day plan: {min_dose}. {cue_cap} — that's the whole ask.",
+    "Don't open the app, open the door. {min_dose}. Showing up is the vote.",
+    "Two-minute version today: {min_dose}. {cue_cap}. Tap when done.",
+    "Today we keep the streak, not push it. {min_dose} — start.",
 ]
 
 
@@ -123,11 +130,23 @@ def _stub_completion(system: str, user: str) -> str:
 
     if tag == "nudge_text":
         action = _extract_field(user, "action") or "today's session"
-        template = random.choice(_NUDGE_VOICES)
+        cue = _extract_field(user, "cue") or "right now"
+        location = _extract_field(user, "location") or "wherever you train"
+        shape = _extract_field(user, "shape") or "full"
+        min_dose = _extract_field(user, "minimum_dose") or "show up at all"
+        pool = _NUDGE_VOICES_MIN if shape == "minimum" else _NUDGE_VOICES_FULL
+        template = random.choice(pool)
+        body = template.format(
+            action=action, cue=cue, cue_cap=cue.capitalize(),
+            location=location, min_dose=min_dose,
+        )
+        # Implementation intention is always WHEN/I WILL/AT — Atomic Habits ch.5.
+        ask = min_dose if shape == "minimum" else action
         return json.dumps({
-            "headline": "It's the moment.",
-            "body": template.format(action=action),
-            "implementation_intention": f"When this nudge fires, I will {action.lower()}.",
+            "headline": "It's the moment." if shape == "full" else "Bad-day plan.",
+            "body": body,
+            "implementation_intention":
+                f"When {cue}, I will do {ask} at {location}.",
         })
 
     if tag == "adapt":

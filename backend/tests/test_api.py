@@ -97,6 +97,44 @@ def test_identity_and_milestones_after_program(client):
     assert all(m["parent_identity_id"] == ident_id for m in ms)
 
 
+def test_session_endpoints_close_the_loop_without_apns(client):
+    """The in-app path: get next session → log done → world grows + program adapts.
+
+    Without this path the user is stranded on a blank Summit after intake when
+    APNs is not configured. See Rubric C1.
+    """
+    headers = {"X-User-Id": "dora"}
+    client.post("/intake/submit", json={
+        "answers": {"experience": "novice", "days_per_week": "3", "injuries": "none"},
+        "identity_statement": "consistent",
+    }, headers=headers)
+
+    r = client.get("/session/next", headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["action_id"]
+    assert body["session"]["exercises"], "session must carry specific exercises (Rubric B2)"
+
+    action_id = body["action_id"]
+    r = client.post(f"/session/{action_id}/log",
+                    json={"outcome": "done"}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["ripples"], "completing a session must grow the world"
+
+    assert client.get("/world", headers=headers).json()["currency"] > 0
+
+
+def test_session_log_unknown_action(client):
+    headers = {"X-User-Id": "erin"}
+    client.post("/intake/submit", json={
+        "answers": {"experience": "novice", "days_per_week": "3", "injuries": "none"},
+        "identity_statement": "consistent",
+    }, headers=headers)
+    r = client.post("/session/does-not-exist/log",
+                    json={"outcome": "done"}, headers=headers)
+    assert r.status_code == 404
+
+
 def test_safety_handoff_via_api(client):
     headers = {"X-User-Id": "bob"}
     r = client.post("/intake/submit", json={

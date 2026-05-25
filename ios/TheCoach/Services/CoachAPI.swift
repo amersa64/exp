@@ -8,8 +8,17 @@ import Foundation
 
 actor CoachAPI {
     static let shared = CoachAPI()
-    // Backend brain — see backend/api/app.py. Override per-environment via Info.plist.
-    private let baseURL = URL(string: "http://127.0.0.1:8765")!
+    // Backend brain — see backend/api/app.py.
+    // Override the URL per-environment by setting `CoachBackendURL` in Info.plist
+    // (e.g. http://192.168.x.y:8765 when running on a real device against a Mac
+    // on the same Wi-Fi). Falls back to localhost for the simulator.
+    private let baseURL: URL = {
+        if let s = Bundle.main.object(forInfoDictionaryKey: "CoachBackendURL") as? String,
+           let url = URL(string: s) {
+            return url
+        }
+        return URL(string: "http://127.0.0.1:8765")!
+    }()
     private let userId = "demo-user"  // single-user v1 (Section 10)
     private let session: URLSession = .shared
 
@@ -47,11 +56,48 @@ actor CoachAPI {
         return wrapper.followups
     }
 
+    func nextSession() async throws -> NextSession {
+        try await get("/session/next")
+    }
+
+    func logSession(actionId: String, outcome: NudgeOutcome, friction: String?) async throws -> LogSessionResult {
+        let result: LogSessionResult = try await post("/session/\(actionId)/log", body: [
+            "outcome": outcome.rawValue,
+            "friction": friction ?? "",
+        ])
+        // Broadcast so other VMs (WorldViewModel) refresh their derived state.
+        await MainActor.run {
+            NotificationCenter.default.post(name: .coachStateChanged, object: nil)
+        }
+        return result
+    }
+
+    func scheduleSession(actionId: String) async throws -> ScheduleResult {
+        try await post("/session/\(actionId)/schedule", body: [:])
+    }
+
+    func coachState() async throws -> CoachState {
+        try await get("/coach/state")
+    }
+
+    /// Dev-only: ask the brain to evaluate one tick now and tell us what it
+    /// decided (fire/silence). Backstops not having APNs in local dev.
+    func devTick() async throws -> DevTickResult {
+        let result: DevTickResult = try await post("/dev/tick", body: [:])
+        await MainActor.run {
+            NotificationCenter.default.post(name: .coachStateChanged, object: nil)
+        }
+        return result
+    }
+
     func reply(nudgeId: String, outcome: NudgeOutcome, friction: String?) async throws {
         try await send("/nudge/\(nudgeId)/reply", body: [
             "outcome": outcome.rawValue,
-            "friction": friction ?? ""
+            "friction": friction ?? "",
         ])
+        await MainActor.run {
+            NotificationCenter.default.post(name: .coachStateChanged, object: nil)
+        }
     }
 
     // HealthKit signals — used for BOTH timing context AND verification (Section 8.1).
@@ -88,6 +134,12 @@ actor CoachAPI {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await session.data(for: req)
     }
+}
+
+extension Notification.Name {
+    /// Fired after any client-driven action that may have changed coach state
+    /// (logs, replies, dev ticks). Listeners refresh their derived views.
+    static let coachStateChanged = Notification.Name("CoachStateChanged")
 }
 
 struct IntakeQuestion: Codable, Identifiable {

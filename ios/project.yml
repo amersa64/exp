@@ -6,14 +6,10 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    CODE_SIGNING_ALLOWED: NO
-    CODE_SIGN_IDENTITY: ""
-    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 7QF5D7PJL5
     SWIFT_VERSION: 5.0
     TARGETED_DEVICE_FAMILY: "1,2"
-    INFOPLIST_KEY_UILaunchScreen_Generation: YES
-    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-    INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
     INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 targets:
   TheCoach:
@@ -25,8 +21,10 @@ targets:
       path: TheCoach/Info.plist
       properties:
         CFBundleDisplayName: The Coach
+        CoachBackendURL: http://127.0.0.1:8765
         NSHealthShareUsageDescription: Read workout data to verify completed sessions and time nudges.
         NSHealthUpdateUsageDescription: Not used.
+        UILaunchScreen: {}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
@@ -35,5 +33,5 @@ targets:
               NSIncludesSubdomains: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.TheCoach
+        PRODUCT_BUNDLE_IDENTIFIER: ai.zaimler.TheCoach
         GENERATE_INFOPLIST_FILE: NO

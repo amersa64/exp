@@ -48,6 +48,10 @@ class TimingDecision:
     reason: str
     fire_at: datetime | None = None
     expected_window_minutes: int = 30
+    # 'full' = prescribe the planned session
+    # 'minimum' = invoke the 2-minute-rule fallback (Atomic Habits ch.13)
+    # Decided here so the LLM author writes accordingly.
+    shape: str = "full"
 
 
 class NudgeEngine:
@@ -125,21 +129,36 @@ class NudgeEngine:
         if slot is None:
             return TimingDecision(False, "no free slot on the calendar today — try tomorrow")
 
-        # 5) Receptivity heuristic from HealthKit: low sleep → soften, low steps →
-        #    a movement-prescription is a fit; high recent exertion → propose the
-        #    smaller version (the 2-minute rule, Section 3.4).
-        # For v0 we only use these signals as REASON metadata; the decision is GO.
+        # 5) Receptivity heuristic from HealthKit + recent outcomes.
+        #    Low sleep, low steps, or last outcome=partial/not_now → 2-minute
+        #    rule: ask for the minimum dose so the user does SOMETHING rather
+        #    than nothing (Atomic Habits ch.13 / Section 3.4).
         signals = self.healthkit.recent_signals(user_id, now - timedelta(hours=12))
         sig_summary = ", ".join(f"{s.kind}={s.value}" for s in signals[:3]) or "no recent signals"
 
+        shape = "full"
+        if recent:
+            last = recent[0]
+            if last.outcome in (NudgeOutcome.PARTIAL, NudgeOutcome.NOT_NOW, NudgeOutcome.BUSY):
+                shape = "minimum"
+
+        # Signal-driven scale-down: low sleep (<6h) OR a recent workout in
+        # the last 12h means receptivity is low. Ask small.
+        for s in signals:
+            if s.kind == "sleep_hours" and s.value < 6:
+                shape = "minimum"
+            if s.kind == "workout":  # already trained recently
+                shape = "minimum"
+
         # 6) Fire — at the *opportunity*, not "right now blindly".
         fire_at = max(now, slot.start - timedelta(minutes=15))
-        reason = f"calendar_gap@{slot.start:%H:%M}({slot.minutes}m), signals[{sig_summary}]"
+        reason = f"calendar_gap@{slot.start:%H:%M}({slot.minutes}m), shape={shape}, signals[{sig_summary}]"
         return TimingDecision(
             should_fire=True,
             reason=reason,
             fire_at=fire_at,
             expected_window_minutes=min(slot.minutes, 90),
+            shape=shape,
         )
 
     # -- CONTENT ----------------------------------------------------------
@@ -150,23 +169,37 @@ class NudgeEngine:
         session: Session | None,
         reason: str,
         user_id: str,
+        shape: str = "full",
     ) -> dict | None:
         """
         Ask the LLM to write the nudge in the persona's voice, then run the
         variety guard. If the candidate looks too similar to recent nudges,
         re-roll ONCE with explicit avoid-this guidance. If still bad, return
         None — silence is a valid output (Rubric D3).
+
+        `shape='minimum'` triggers the 2-minute-rule framing (ch.13) — ask
+        for the minimum_dose, not the full prescription.
         """
         recent_bodies = [n.body for n in self.store.recent_nudges(user_id, limit=8)]
+        identity = self.store.get_identity_for_user(user_id)
+        identity_line = identity.statement if identity else ""
 
         def _roll(extra: str = "") -> dict:
+            shape_guidance = (
+                "  - SHAPE=minimum: this is the 2-minute-rule fallback. Ask for the\n"
+                "    MINIMUM dose only (see action.minimum_dose). The point is to\n"
+                "    show up at all — DO NOT prescribe the full session.\n"
+                if shape == "minimum"
+                else "  - SHAPE=full: prescribe the planned session — specific lifts, sets, reps, load.\n"
+            )
             system = (
                 f"[TASK:nudge_text]\n"
                 f"You are the user's domain coach.\n"
                 f"Voice: {self.persona.voice}\n\n"
                 "Write a SINGLE push notification (under 220 chars) that:\n"
-                "  - Names the specific action, not a category.\n"
-                "  - Uses an implementation intention (\"when X, I will Y\").\n"
+                f"{shape_guidance}"
+                "  - Uses an implementation intention: \"WHEN [cue], I WILL [behavior] AT [location]\".\n"
+                "  - Casts the ask as a vote for the user's identity statement (do not quote it verbatim).\n"
                 "  - Carries one of these flavors at random — pick a different one each time:\n"
                 "    [direct prescription] [reframe / lower the bar] [challenge / earn it]\n"
                 "    [curiosity question]   [environmental cue]      [data callback to last session].\n"
@@ -176,6 +209,7 @@ class NudgeEngine:
             )
             action_line = action.description
             cue = action.cue or "right now"
+            location = action.location or "wherever you train"
             body_brief = ""
             if session:
                 body_brief = " | ".join(
@@ -183,20 +217,32 @@ class NudgeEngine:
                     for e in session.exercises
                 )
             user_msg = (
+                f"shape: {shape}\n"
+                f"identity: {identity_line}\n"
                 f"action: {action.title}\n"
                 f"prescription: {action_line}\n"
+                f"minimum_dose: {action.minimum_dose or '(none)'}\n"
                 f"session_brief: {body_brief}\n"
                 f"cue: {cue}\n"
+                f"location: {location}\n"
                 f"timing_reason: {reason}\n"
                 f"variety_seed: {random.randint(0, 10_000)}"
             )
             try:
                 return self.llm.complete_json(system, user_msg, max_tokens=400)
             except Exception:
+                if shape == "minimum" and action.minimum_dose:
+                    fallback_body = (
+                        f"Bad-day plan: {action.minimum_dose}. "
+                        f"{cue.capitalize()} — that still counts."
+                    )
+                else:
+                    fallback_body = f"{action.title} — {action_line}. {cue.capitalize()}, start."
                 return {
                     "headline": "It's the moment.",
-                    "body": f"{action.title} — {action_line}. {cue.capitalize()}, start.",
-                    "implementation_intention": f"When this nudge fires, I will start {action.title}.",
+                    "body": fallback_body,
+                    "implementation_intention":
+                        f"When {cue}, I will start {action.title} at {location}.",
                 }
 
         cand = _roll()
@@ -225,7 +271,9 @@ class NudgeEngine:
         decision = self.decide_timing(user_id, action, now)
         if not decision.should_fire:
             return None
-        body = self.author_nudge_text(action, session, decision.reason, user_id)
+        body = self.author_nudge_text(
+            action, session, decision.reason, user_id, shape=decision.shape,
+        )
         if body is None:
             # Variety guard refused — silence (Rubric D3 + D2).
             return None

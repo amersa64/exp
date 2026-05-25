@@ -99,6 +99,11 @@ class PushRegister(BaseModel):
     platform: str = "ios"
 
 
+class LogSessionBody(BaseModel):
+    outcome: NudgeOutcome
+    friction: str | None = None
+
+
 # ---- routes ----------------------------------------------------------------
 
 @app.get("/healthz")
@@ -207,6 +212,138 @@ def healthkit_signal(body: HealthSignalBody, x_user_id: str = Header(default=Non
 def push_register(body: PushRegister, x_user_id: str = Header(default=None)) -> dict[str, str]:
     app.state.push.register_device(_uid(x_user_id), body.token, body.platform)
     return {"ok": "registered"}
+
+
+@app.get("/session/next")
+def session_next(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    """
+    The next prescribed session — what the coach would push if it were the moment.
+
+    Minting via `prepare_next_action` so a real AtomicAction id exists in the
+    store; iOS then references that id when logging or scheduling. This is the
+    same code path the nudge engine uses, so what the user sees is what would
+    have been pushed.
+    """
+    coach = _coach_for(_uid(x_user_id))
+    try:
+        action, session = coach.prepare_next_action()
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {
+        "action_id": action.id,
+        "action_title": action.title,
+        "prescribed_for": action.prescribed_for.isoformat() if action.prescribed_for else None,
+        "expected_minutes": session.expected_minutes,
+        "cue": action.cue,
+        "location": action.location,
+        "minimum_dose": action.minimum_dose,
+        "session": {
+            "name": session.name,
+            "expected_minutes": session.expected_minutes,
+            "progression_rule": session.progression_rule,
+            "exercises": [e.model_dump() for e in session.exercises],
+        },
+    }
+
+
+@app.get("/coach/state")
+def coach_state(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    """
+    Snapshot of what the brain is thinking right now — for the dev pane on iOS
+    and for human-readable debugging. NOT a place to add coaching logic.
+    """
+    user_id = _uid(x_user_id)
+    store = app.state.store
+    profile = store.get_profile(user_id)
+    program = store.get_program(user_id)
+    identity = store.get_identity_for_user(user_id)
+    nudges = store.recent_nudges(user_id, limit=5)
+    coach = _coach_for(user_id)
+    followups = coach.open_followups()
+    last_nudge = nudges[0] if nudges else None
+    return {
+        "has_profile": profile is not None,
+        "has_program": program is not None,
+        "identity_statement": identity.statement if identity else None,
+        "identity_anchor": identity.anchor_habit if identity else None,
+        "program_name": program.program_name if program else None,
+        "session_index": program.session_index if program else 0,
+        "last_nudge": (
+            {
+                "id": last_nudge.id,
+                "headline": last_nudge.headline,
+                "body": last_nudge.body,
+                "implementation_intention": last_nudge.implementation_intention,
+                "fired_at": last_nudge.fired_at.isoformat(),
+                "fired_because": last_nudge.fired_because,
+                "outcome": last_nudge.outcome.value,
+            }
+            if last_nudge else None
+        ),
+        "open_followups": [
+            {"nudge_id": f.nudge_id, "title": f.action_title, "prompt": f.prompt}
+            for f in followups
+        ],
+    }
+
+
+@app.post("/dev/tick")
+def dev_tick(x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    """
+    Dev affordance: run a scheduler tick for THIS user and return what the
+    brain decided. Lets the iOS app exercise the JITAI loop without APNs.
+    Carries no auth because the whole app carries no auth — see top of file.
+    """
+    user_id = _uid(x_user_id)
+    coach = _coach_for(user_id)
+    coach.nudge_engine.sweep_ignored(user_id, datetime.now(timezone.utc))
+    nudge = coach.try_nudge()
+    return {
+        "fired": nudge is not None,
+        "nudge": (
+            {
+                "id": nudge.id,
+                "headline": nudge.headline,
+                "body": nudge.body,
+                "implementation_intention": nudge.implementation_intention,
+                "fired_because": nudge.fired_because,
+            }
+            if nudge else None
+        ),
+    }
+
+
+@app.post("/session/{action_id}/log")
+def session_log(action_id: str, body: LogSessionBody, x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    """
+    User-initiated session log — closes the loop without an APNs nudge.
+
+    Same downstream effect as POST /nudge/{id}/reply: world grows on 'done',
+    program adapts on every report.
+    """
+    coach = _coach_for(_uid(x_user_id))
+    try:
+        nudge, ripples, handoff = coach.log_session(action_id, body.outcome, body.friction)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    rationale = coach.adapt()
+    return {
+        "ok": True,
+        "ripples": ripples,
+        "handoff": handoff,
+        "adaptation": rationale,
+        "outcome": nudge.outcome.value,
+    }
+
+
+@app.post("/session/{action_id}/schedule")
+def session_schedule(action_id: str, x_user_id: str = Header(default=None)) -> dict[str, Any]:
+    """Time-block the prescribed session on the calendar (EXECUTE stage)."""
+    coach = _coach_for(_uid(x_user_id))
+    action = app.state.store.get_action(action_id)
+    if not action:
+        raise HTTPException(404, f"unknown action {action_id}")
+    return coach.execute_in_calendar(action)
 
 
 @app.post("/scheduler/tick")

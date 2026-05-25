@@ -55,6 +55,21 @@ def _intake(prof: UserProfile | None):
             "Roughly — most you can squat for 5 reps with good form? (lb, or 'unsure')",
             coerce=lambda s: int("".join(c for c in s if c.isdigit()) or "0") or "unsure",
         ),
+        # Atomic Habits ch.5: habit stacking — anchor the new behavior to
+        # something you already do every day without fail.
+        IntakeQuestion(
+            "anchor_habit",
+            "Pick one thing you do every day without thinking — morning coffee, "
+            "after-work commute, lunch break, putting the kids to bed. We'll "
+            "stack training right after it.",
+        ),
+        # Where the session will actually happen — fuels implementation
+        # intentions and reduces decision friction at game time.
+        IntakeQuestion(
+            "training_location",
+            "Where will the training actually happen? (e.g. 'the gym down the "
+            "street', 'the garage', 'the living room')",
+        ),
     ]
 
 

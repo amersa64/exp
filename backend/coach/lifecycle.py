@@ -131,7 +131,13 @@ class Coach:
         if not profile:
             raise RuntimeError("INTAKE must run before PROGRAM. See Section 4.1.")
 
-        identity = Identity(user_id=self.user_id, statement=identity_statement, domain=self.domain)
+        anchor = (profile.answers.get("anchor_habit") or "").strip() or None
+        identity = Identity(
+            user_id=self.user_id,
+            statement=identity_statement,
+            domain=self.domain,
+            anchor_habit=anchor,
+        )
         self.store.save_identity(identity)
 
         program, milestones, habits = self.persona.build_program(profile)
@@ -168,6 +174,27 @@ class Coach:
         habit = habits[0]
 
         session = self.persona.next_session(program, profile)
+
+        # Atomic Habits ch.5 + ch.13: ground the action in an implementation
+        # intention (cue + location) and a minimum-dose variant. The persona's
+        # intake collected the anchor + location; we surface them here so they
+        # ride along to the iOS client (Train tab + nudge body) and the LLM
+        # nudge author has real strings to work with rather than placeholders.
+        answers = profile.answers
+        anchor = (answers.get("anchor_habit") or "").strip()
+        location = (answers.get("training_location") or "").strip()
+        cue = (
+            f"right after {anchor}" if anchor
+            else "when your next 45-min calendar gap opens"
+        )
+        # Minimum dose = first exercise, one set, half-reps. The 2-minute
+        # version of the session — done on a bad day, this still counts as
+        # showing up and reinforces identity.
+        first = session.exercises[0]
+        min_reps = max(1, first.reps // 2)
+        load_str = f" @ {int(first.load_lb)}lb" if first.load_lb else ""
+        minimum_dose = f"just 1 set of {first.name} x{min_reps}{load_str} — that's it"
+
         action = AtomicAction(
             title=f"{session.name} — strength session",
             description=" | ".join(
@@ -176,7 +203,9 @@ class Coach:
             ),
             tracking=TrackingSpec(kind=TrackingKind.BINARY),
             parent_habit_id=habit.id,
-            cue="when your next 45-min calendar gap opens",
+            cue=cue,
+            location=location or None,
+            minimum_dose=minimum_dose,
             expected_minutes=session.expected_minutes,
         )
         self.store.save_action(action)
@@ -186,6 +215,53 @@ class Coach:
         now = now or _now()
         action, session = self.prepare_next_action()
         return self.nudge_engine.maybe_fire(self.user_id, action, session, now)
+
+    def log_session(
+        self,
+        action_id: str,
+        outcome: NudgeOutcome,
+        friction_note: str | None = None,
+        now: datetime | None = None,
+    ) -> tuple[Nudge, list[str], str | None]:
+        """
+        User-initiated session log — closes the loop without an APNs nudge.
+
+        Mints a synthetic Nudge marked as already-fired so the rest of the
+        REPORT → ADAPT path (record_report → grow → adapt) is unchanged.
+        """
+        if friction_note:
+            sig = safety.scan(friction_note)
+            if sig:
+                action = self.store.get_action(action_id)
+                if not action:
+                    raise ValueError(f"unknown action {action_id}")
+                return Nudge(
+                    user_id=self.user_id, action_id=action_id,
+                    fire_window_until=now or _now(),
+                    headline="(self-log handed off for safety)",
+                    body=action.description,
+                    outcome=outcome,
+                    outcome_at=now or _now(),
+                    friction_note=friction_note,
+                    fired_because="self-log",
+                ), [], sig.handoff
+
+        action = self.store.get_action(action_id)
+        if not action:
+            raise ValueError(f"unknown action {action_id}")
+
+        moment = now or _now()
+        nudge = Nudge(
+            user_id=self.user_id,
+            action_id=action.id,
+            fired_at=moment,
+            fire_window_until=moment,
+            headline=action.title,
+            body=action.description,
+            fired_because="self-log",
+        )
+        self.store.save_nudge(nudge)
+        return self.record_report(nudge.id, outcome, friction_note)
 
     # =========================================================================
     # STAGE 4 — EXECUTE (Section 4.1.4, Rubric A3 / F2)

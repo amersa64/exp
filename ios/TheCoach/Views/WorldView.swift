@@ -16,6 +16,7 @@ struct WorldView: View {
 
     var body: some View {
         TabView {
+            TrainView().tabItem { Label("Train", systemImage: "dumbbell.fill") }
             summitTab.tabItem { Label("Summit", systemImage: "mountain.2.fill") }
             milestonesTab.tabItem { Label("Milestones", systemImage: "flag.fill") }
             habitsTab.tabItem { Label("Habits", systemImage: "leaf.fill") }
@@ -41,6 +42,7 @@ struct WorldView: View {
             .contentMargins(.bottom, 100, for: .scrollContent)
             .refreshable { await model.refreshWorld() }
             .navigationTitle("Your summit")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { settingsButton; currencyToolbar }
         }
     }
@@ -80,19 +82,18 @@ struct WorldView: View {
 
     private var todayTab: some View {
         NavigationStack {
-            Group {
-                switch model.followupsState {
-                case .loading:
-                    ProgressView().controlSize(.large)
-                case .ready(let f):
-                    TodayContent(followups: f)
-                case .failed(let msg):
-                    ErrorView(title: "Couldn't load today",
-                              message: msg,
-                              retry: { await model.refreshFollowups() })
-                }
+            ScrollView {
+                TodayContent(
+                    followupsState: model.followupsState,
+                    coachState: model.coachState,
+                    isTicking: model.isTicking,
+                    onTick: { await model.runTickAndRefresh() },
+                    refresh: { await model.refreshAll() }
+                )
+                .padding(.horizontal)
             }
-            .refreshable { await model.refreshFollowups() }
+            .contentMargins(.bottom, 100, for: .scrollContent)
+            .refreshable { await model.refreshAll() }
             .navigationTitle("Today")
             .toolbar { settingsButton; currencyToolbar }
         }
@@ -133,12 +134,33 @@ final class WorldViewModel: ObservableObject {
     @Published var world: World?
     @Published var milestonesState: AsyncState<[Milestone]> = .loading
     @Published var followupsState: AsyncState<[FollowUp]> = .loading
+    @Published var coachState: CoachState?
+    @Published var isTicking: Bool = false
+    @Published var lastTick: DevTickResult?
+
+    private var observer: NSObjectProtocol?
+
+    init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: .coachStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Hop to MainActor — closure is nominally any-actor.
+            Task { @MainActor [weak self] in await self?.refreshAll() }
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
 
     func refreshAll() async {
         async let w: Void = refreshWorld()
         async let m: Void = refreshMilestones()
         async let f: Void = refreshFollowups()
-        _ = await (w, m, f)
+        async let c: Void = refreshCoachState()
+        _ = await (w, m, f, c)
     }
 
     func refreshWorld() async {
@@ -162,6 +184,17 @@ final class WorldViewModel: ObservableObject {
             followupsState = .failed(error.localizedDescription)
         }
     }
+
+    func refreshCoachState() async {
+        coachState = try? await CoachAPI.shared.coachState()
+    }
+
+    func runTickAndRefresh() async {
+        isTicking = true
+        defer { isTicking = false }
+        lastTick = try? await CoachAPI.shared.devTick()
+        await refreshAll()
+    }
 }
 
 // MARK: - Currency badge
@@ -172,7 +205,7 @@ private struct CurrencyBadge: View {
     private var streak: Int { world?.streakDays ?? 0 }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: "flame.fill")
                 .foregroundStyle(.orange)
             Text("\(currency)")
@@ -184,9 +217,10 @@ private struct CurrencyBadge: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
-        .font(.callout)
+        .font(.footnote)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
+        .fixedSize()
         .glassEffect(in: Capsule())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(currency) effort, \(streak) day streak")
@@ -207,9 +241,9 @@ private struct SummitContent: View {
             ? identityStatement!
             : "Your summit."
 
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             // Identity — most important, lives high in the visual hierarchy.
-            VStack(spacing: 10) {
+            VStack(spacing: 6) {
                 Text(statement)
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
@@ -221,14 +255,14 @@ private struct SummitContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 8)
-            .padding(.top, 8)
 
-            // Visual — decorative, OK if partially behind glass on small screens.
-            Image(systemName: "mountain.2.fill")
-                .font(.system(size: 84))
-                .foregroundStyle(.tint)
-                .symbolEffect(.pulse, options: .repeating, value: world?.currency)
-                .padding(.vertical, 8)
+            // Visual — a growing mountain. Snow cap rises with effort,
+            // an aura warms with streak. Read-only reflection (Principle 2.6).
+            SummitHero(
+                currency: world?.currency ?? 0,
+                streakDays: world?.streakDays ?? 0
+            )
+            .padding(.vertical, 8)
 
             // Numbers — already in the toolbar badge, so overlap with the tab
             // bar's glass effect is acceptable.
@@ -240,12 +274,15 @@ private struct SummitContent: View {
 private struct StatsCard: View {
     let world: World?
     var body: some View {
-        HStack(spacing: 16) {
-            stat(value: "\(world?.currency ?? 0)", label: "Effort")
-            Divider().frame(height: 40)
-            stat(value: "\(world?.streakDays ?? 0)", label: "Streak (days)")
-            Divider().frame(height: 40)
-            stat(value: "\(world?.longestStreak ?? 0)", label: "Longest")
+        VStack(spacing: 12) {
+            HStack(spacing: 16) {
+                stat(value: "\(world?.currency ?? 0)", label: "Effort")
+                Divider().frame(height: 40)
+                stat(value: "\(world?.streakDays ?? 0)", label: "Streak (days)")
+                Divider().frame(height: 40)
+                stat(value: "\(world?.longestStreak ?? 0)", label: "Longest")
+            }
+            VotesRow(votes: world?.identityVotes ?? 0)
         }
         .padding()
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -257,6 +294,146 @@ private struct StatsCard: View {
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Atomic Habits ch.2 — every verified action is a vote for who you're becoming.
+/// We surface this on the Summit because it's the most important number in the app.
+private struct VotesRow: View {
+    let votes: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.tint)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(votes) \(votes == 1 ? "vote" : "votes") cast")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                Text("for who you're becoming")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
+    }
+}
+
+// MARK: - Summit hero
+
+private struct SummitHero: View {
+    let currency: Int
+    let streakDays: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var growth: Double { min(Double(currency) / 50.0, 1.0) }
+    private var aura: Double { min(Double(streakDays) / 30.0, 1.0) }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.accentColor.opacity(0.10), Color.accentColor.opacity(0.02)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            RadialGradient(
+                colors: [Color.accentColor.opacity(0.35 * aura), .clear],
+                center: UnitPoint(x: 0.5, y: 0.32),
+                startRadius: 8,
+                endRadius: 160
+            )
+
+            BackRangeShape()
+                .fill(Color.accentColor.opacity(0.18))
+                .frame(height: heroHeight * 0.60)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+            FrontMountainShape()
+                .fill(Color.accentColor.gradient)
+                .frame(height: mountainHeight)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+            FrontMountainShape()
+                .fill(Color.white.opacity(0.92))
+                .frame(height: mountainHeight)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .mask(alignment: .top) {
+                    Rectangle()
+                        .frame(height: snowMaskHeight)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+
+            Image(systemName: "star.fill")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .shadow(color: Color.accentColor.opacity(0.9), radius: 14)
+                .shadow(color: Color.accentColor.opacity(0.55), radius: 5)
+                .offset(y: starOffsetY)
+                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+        }
+        .frame(height: heroHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: growth)
+        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: aura)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your summit, currency \(currency), streak \(streakDays) days")
+    }
+
+    private let heroHeight: CGFloat = 220
+    private let mountainHeight: CGFloat = 200
+    // Peak in hero coords: bottom-aligned mountain's peak sits at
+    // heroHeight - mountainHeight + mountainHeight * peakRatio.
+    private var peakY: CGFloat { heroHeight - mountainHeight + mountainHeight * 0.30 }
+
+    // Snow line sits just above the peak when growth=0 (no snow) and
+    // descends with effort, never below the mountain's mid-flank.
+    private var snowMaskHeight: CGFloat {
+        let minHeight = peakY - 8
+        let maxHeight = peakY + 80
+        return minHeight + (maxHeight - minHeight) * CGFloat(growth)
+    }
+
+    // Offset is from the ZStack's center, hence subtracting half the height.
+    private var starOffsetY: CGFloat { peakY - heroHeight / 2 }
+}
+
+private struct FrontMountainShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width
+        let h = rect.height
+        path.move(to: CGPoint(x: w * 0.10, y: h))
+        path.addLine(to: CGPoint(x: w * 0.36, y: h * 0.58))
+        path.addLine(to: CGPoint(x: w * 0.46, y: h * 0.66))
+        path.addLine(to: CGPoint(x: w * 0.55, y: h * 0.30))
+        path.addLine(to: CGPoint(x: w * 0.66, y: h * 0.52))
+        path.addLine(to: CGPoint(x: w * 0.78, y: h * 0.68))
+        path.addLine(to: CGPoint(x: w * 0.90, y: h))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct BackRangeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width
+        let h = rect.height
+        path.move(to: CGPoint(x: 0, y: h))
+        path.addLine(to: CGPoint(x: w * 0.08, y: h * 0.72))
+        path.addLine(to: CGPoint(x: w * 0.22, y: h * 0.55))
+        path.addLine(to: CGPoint(x: w * 0.36, y: h * 0.78))
+        path.addLine(to: CGPoint(x: w * 0.52, y: h * 0.48))
+        path.addLine(to: CGPoint(x: w * 0.68, y: h * 0.66))
+        path.addLine(to: CGPoint(x: w * 0.82, y: h * 0.54))
+        path.addLine(to: CGPoint(x: w, y: h * 0.72))
+        path.addLine(to: CGPoint(x: w, y: h))
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -324,55 +501,283 @@ private struct HabitsContent: View {
 private struct HabitCard: View {
     let name: String
     let vitality: Double
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "leaf.fill")
-                    .foregroundStyle(vitalityColor)
+        HStack(spacing: 16) {
+            VitalityRing(vitality: vitality)
+                .frame(width: 64, height: 64)
+
+            VStack(alignment: .leading, spacing: 4) {
                 Text(name).font(.headline)
-                Spacer()
-                Text("\(Int(vitality * 100))%")
-                    .font(.subheadline.monospacedDigit())
+                Text(vitalityLabel)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(vitalityColor)
+                Text("\(Int(vitality * 100))% vitality")
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            ProgressView(value: vitality)
-                .tint(vitalityColor)
+
+            Spacer(minLength: 0)
         }
         .padding()
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .animation(.spring(response: 0.55, dampingFraction: 0.85), value: vitality)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(name), \(vitalityLabel), \(Int(vitality * 100)) percent vitality")
     }
 
     private var vitalityColor: Color {
         if vitality > 0.7 { return .green }
         if vitality > 0.4 { return .yellow }
-        return .orange
+        if vitality > 0.0 { return .orange }
+        return .secondary
+    }
+
+    private var vitalityLabel: String {
+        if vitality > 0.7 { return "Thriving" }
+        if vitality > 0.4 { return "Steady" }
+        if vitality > 0.0 { return "Wilting" }
+        return "Dormant"
+    }
+}
+
+private struct VitalityRing: View {
+    let vitality: Double
+
+    private var color: Color {
+        if vitality > 0.7 { return .green }
+        if vitality > 0.4 { return .yellow }
+        if vitality > 0.0 { return .orange }
+        return .secondary
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color.opacity(0.18), lineWidth: 6)
+            Circle()
+                .trim(from: 0, to: max(0.02, vitality))
+                .stroke(color.gradient, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Image(systemName: "leaf.fill")
+                .font(.title3)
+                .foregroundStyle(color.gradient)
+        }
     }
 }
 
 // MARK: - Today tab
 
 private struct TodayContent: View {
-    let followups: [FollowUp]
+    let followupsState: WorldViewModel.AsyncState<[FollowUp]>
+    let coachState: CoachState?
+    let isTicking: Bool
+    let onTick: () async -> Void
+    let refresh: () async -> Void
+    @State private var selected: FollowUp?
+
     var body: some View {
-        if followups.isEmpty {
-            ContentUnavailableView(
-                "Nothing owed",
-                systemImage: "sun.max",
-                description: Text("No open nudges. The coach will reach out when the moment fits.")
-            )
-        } else {
-            List(followups) { f in
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(f.actionTitle).font(.headline)
-                    Text(f.prompt)
-                        .font(.subheadline)
+        VStack(alignment: .leading, spacing: 16) {
+            // Last nudge or no-nudge-yet state — the brain's most recent move.
+            if let nudge = coachState?.lastNudge {
+                LastNudgeCard(nudge: nudge)
+            } else if let c = coachState, c.hasProgram {
+                EmptyNudgeCard()
+            }
+
+            // Followups owed — Rubric A4 loop-closing surface.
+            FollowupsSection(state: followupsState, onSelect: { selected = $0 })
+
+            // Dev affordance: trigger a tick without APNs/cron in the loop yet.
+            CoachDevCard(isTicking: isTicking, onTick: { Task { await onTick() } })
+                .padding(.top, 4)
+        }
+        .padding(.vertical, 12)
+        .sheet(item: $selected, onDismiss: { Task { await refresh() } }) { followup in
+            NudgeReplyView(nudgeId: followup.nudgeId, defaultOutcome: "done")
+                .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+private struct LastNudgeCard: View {
+    let nudge: NudgeSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "megaphone.fill")
+                    .foregroundStyle(.tint)
+                Text("LATEST FROM THE COACH")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(relativeTime)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Text(nudge.headline)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(nudge.body)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+            if let ii = nudge.implementationIntention, !ii.isEmpty {
+                Text(ii)
+                    .font(.footnote.italic())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                outcomeBadge
+                Text("·").foregroundStyle(.tertiary)
+                Text(nudge.firedBecause)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            .padding(.top, 4)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var relativeTime: String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: nudge.firedAt, relativeTo: Date())
+    }
+
+    @ViewBuilder
+    private var outcomeBadge: some View {
+        let label = nudge.outcome.capitalized
+        let color: Color = {
+            switch nudge.outcome {
+            case "done":     return .green
+            case "partial":  return .yellow
+            case "skipped", "ignored": return .gray
+            default:         return .secondary
+            }
+        }()
+        Text(label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.18), in: Capsule())
+            .foregroundStyle(color)
+    }
+}
+
+private struct EmptyNudgeCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Coach hasn't pushed yet today", systemImage: "moon.zzz.fill")
+                .font(.subheadline.weight(.semibold))
+            Text("Silence is a feature. The brain fires only when an opportunity opens. Tap below to run a check.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct FollowupsSection: View {
+    let state: WorldViewModel.AsyncState<[FollowUp]>
+    let onSelect: (FollowUp) -> Void
+
+    var body: some View {
+        switch state {
+        case .loading:
+            HStack { Spacer(); ProgressView(); Spacer() }.padding()
+        case .failed(let msg):
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Couldn't load follow-ups", systemImage: "exclamationmark.triangle")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                Text(msg).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        case .ready(let followups):
+            if followups.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Nothing owed", systemImage: "checkmark.seal")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.green)
+                    Text("The coach isn't waiting on a reply. Nothing to clean up.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 6)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("FOLLOW-UPS OWED")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(followups) { f in
+                        Button {
+                            onSelect(f)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(f.actionTitle).font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text(f.prompt)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.yellow.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-            .listStyle(.insetGrouped)
         }
+    }
+}
+
+private struct CoachDevCard: View {
+    let isTicking: Bool
+    let onTick: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Coach engine", systemImage: "cpu")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            Text("Trigger a tick to wake the brain now (dev affordance — replaces APNs/cron locally).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onTick) {
+                HStack {
+                    if isTicking { ProgressView().controlSize(.small) }
+                    Text(isTicking ? "Ticking…" : "Tick now")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.vertical, 2)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(isTicking)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 

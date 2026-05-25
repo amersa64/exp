@@ -14,13 +14,16 @@ struct IntakeView: View {
     @State private var submitState: SubmitState = .idle
     @FocusState private var injuriesFocused: Bool
     @FocusState private var squatFocused: Bool
+    @FocusState private var anchorFocused: Bool
+    @FocusState private var locationFocused: Bool
     @FocusState private var identityFocused: Bool
 
     enum Step: Int, CaseIterable, Comparable {
-        case welcome, experience, daysPerWeek, injuries, equipment, baselineSquat, identity, submitting
+        case welcome, experience, daysPerWeek, injuries, equipment, baselineSquat,
+             anchor, location, identity, submitting
         static func < (lhs: Step, rhs: Step) -> Bool { lhs.rawValue < rhs.rawValue }
         var index: Int { rawValue }
-        var total: Int { 6 }  // counted onboarding screens, excluding welcome + submitting
+        var total: Int { 8 }  // onboarding screens, excluding welcome + submitting
     }
 
     enum SubmitState: Equatable {
@@ -78,6 +81,8 @@ struct IntakeView: View {
         case .injuries:     injuriesScreen
         case .equipment:    equipmentScreen
         case .baselineSquat: baselineSquatScreen
+        case .anchor:       anchorScreen
+        case .location:     locationScreen
         case .identity:     identityScreen
         }
     }
@@ -224,6 +229,44 @@ struct IntakeView: View {
         }
     }
 
+    private var anchorScreen: some View {
+        OnboardingQuestion(
+            prompt: "Pick something you do every single day.",
+            subtitle: "We'll stack training right after it — morning coffee, school drop-off, end-of-workday shutdown."
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("e.g. after my morning coffee",
+                          text: $answers.anchorHabit, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($anchorFocused)
+                Text("Habit stacking: 'right after X, I will train' is much harder to forget than 'I'll train sometime today'.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var locationScreen: some View {
+        OnboardingQuestion(
+            prompt: "Where will the training happen?",
+            subtitle: "Naming the place makes the moment harder to dodge."
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("e.g. the garage, the gym on Main St., the living room",
+                          text: $answers.trainingLocation, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($locationFocused)
+                Text("Implementation intention: when CUE, I will TRAIN at LOCATION. All three together; not just one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var identityScreen: some View {
         OnboardingQuestion(
             prompt: "Who are you becoming?",
@@ -297,6 +340,8 @@ struct IntakeView: View {
         case .experience, .daysPerWeek, .equipment: return true
         case .injuries:      return !answers.injuries.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .baselineSquat: return answers.unsure || !answers.baselineSquatRaw.isEmpty
+        case .anchor:        return !answers.anchorHabit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .location:      return !answers.trainingLocation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .identity:      return !identityStatement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .welcome, .submitting: return false
         }
@@ -331,6 +376,8 @@ struct IntakeView: View {
         submitState = .loading
         injuriesFocused = false
         squatFocused = false
+        anchorFocused = false
+        locationFocused = false
         identityFocused = false
 
         let answersDict = answers.toBackendDict()
@@ -448,6 +495,8 @@ private struct StructuredAnswers {
     var equipment: Equipment = .fullGym
     var baselineSquatRaw: String = ""
     var unsure: Bool = false
+    var anchorHabit: String = ""
+    var trainingLocation: String = ""
 
     func toBackendDict() -> [String: String] {
         [
@@ -456,6 +505,8 @@ private struct StructuredAnswers {
             "injuries": injuries.trimmingCharacters(in: .whitespacesAndNewlines),
             "equipment": equipment.backendValue,
             "baseline_squat": unsure ? "unsure" : baselineSquatRaw,
+            "anchor_habit": anchorHabit.trimmingCharacters(in: .whitespacesAndNewlines),
+            "training_location": trainingLocation.trimmingCharacters(in: .whitespacesAndNewlines),
         ]
     }
 }

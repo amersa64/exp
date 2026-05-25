@@ -44,8 +44,105 @@ struct World: Codable {
     let longestStreak: Int
     let unlocked: [String]
     let livingSystems: [String: Double]
+    // Atomic Habits ch.2 — votes cast for the user's identity statement.
+    // Defaults to 0 for older backends that don't return the field.
+    var identityVotes: Int = 0
+
+    enum CodingKeys: String, CodingKey {
+        case theme, currency, streakDays, longestStreak, unlocked, livingSystems, identityVotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        theme = try c.decode(String.self, forKey: .theme)
+        currency = try c.decode(Int.self, forKey: .currency)
+        streakDays = try c.decode(Int.self, forKey: .streakDays)
+        longestStreak = try c.decode(Int.self, forKey: .longestStreak)
+        unlocked = try c.decode([String].self, forKey: .unlocked)
+        livingSystems = try c.decode([String: Double].self, forKey: .livingSystems)
+        identityVotes = (try? c.decode(Int.self, forKey: .identityVotes)) ?? 0
+    }
 }
 
 enum NudgeOutcome: String, Codable {
     case done, partial, skipped, not_now, busy
+}
+
+struct ExercisePrescription: Codable, Identifiable {
+    let name: String
+    let sets: Int
+    let reps: Int
+    let loadLb: Double?
+    let restSeconds: Int
+    let notes: String
+
+    var id: String { name }
+}
+
+struct PrescribedSession: Codable {
+    let name: String
+    let expectedMinutes: Int
+    let progressionRule: String
+    let exercises: [ExercisePrescription]
+}
+
+struct NextSession: Codable {
+    let actionId: String
+    let actionTitle: String
+    let prescribedFor: Date?
+    let expectedMinutes: Int
+    let cue: String?
+    let location: String?
+    let minimumDose: String?
+    let session: PrescribedSession
+}
+
+/// Snapshot of what the brain is currently thinking — dev pane + status.
+struct CoachState: Codable {
+    let hasProfile: Bool
+    let hasProgram: Bool
+    let identityStatement: String?
+    let identityAnchor: String?
+    let programName: String?
+    let sessionIndex: Int
+    let lastNudge: NudgeSnapshot?
+    let openFollowups: [FollowupSnapshot]
+}
+
+struct NudgeSnapshot: Codable, Identifiable {
+    let id: String
+    let headline: String
+    let body: String
+    let implementationIntention: String?
+    let firedAt: Date
+    let firedBecause: String
+    let outcome: String
+}
+
+struct FollowupSnapshot: Codable, Identifiable {
+    let nudgeId: String
+    let title: String
+    let prompt: String
+    var id: String { nudgeId }
+}
+
+struct DevTickResult: Codable {
+    let fired: Bool
+    let nudge: NudgeSnapshot?
+}
+
+struct LogSessionResult: Codable {
+    let ok: Bool
+    let ripples: [String]
+    let handoff: String?
+    let adaptation: String?
+    let outcome: String
+}
+
+struct ScheduleResult: Codable {
+    let blocked: Bool
+    let reason: String?
+    let calendarEventId: String?
+    let start: String?
+    let end: String?
 }
