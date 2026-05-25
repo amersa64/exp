@@ -37,6 +37,11 @@ from .personas.base import Persona
 from .push import PushDelivery, LoggingPushDelivery
 from .store import Store
 
+# Forward reference type-only — see __init__ for `journal` kwarg.
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .journal import CoachJournalAuthor
+
 
 # ---------------------------------------------------------------------------
 # Decision engine — does it make sense to nudge RIGHT NOW?
@@ -69,6 +74,7 @@ class NudgeEngine:
         calendar: CalendarClient,
         healthkit: HealthKitClient,
         push: PushDelivery | None = None,
+        journal: "CoachJournalAuthor | None" = None,
     ) -> None:
         self.store = store
         self.llm = llm
@@ -76,6 +82,9 @@ class NudgeEngine:
         self.calendar = calendar
         self.healthkit = healthkit
         self.push: PushDelivery = push or LoggingPushDelivery()
+        # Journal is optional so the engine can be used in isolation in
+        # tests; when present, nudge authoring conditions on it.
+        self.journal = journal
 
     # -- TIMING ------------------------------------------------------------
 
@@ -184,6 +193,14 @@ class NudgeEngine:
         identity = self.store.get_identity_for_user(user_id)
         identity_line = identity.statement if identity else ""
 
+        # The narrative memory — the thing that makes this a coach who knows
+        # the user, not a tracker that fills in templates. When the journal
+        # has entries the LLM gets to reference patterns, language the user
+        # used, prior friction. When it's empty we still produce a nudge.
+        journal_context = (
+            self.journal.recent_context_block(user_id, n=8) if self.journal else ""
+        )
+
         def _roll(extra: str = "") -> dict:
             shape_guidance = (
                 "  - SHAPE=minimum: this is the 2-minute-rule fallback. Ask for the\n"
@@ -192,14 +209,25 @@ class NudgeEngine:
                 if shape == "minimum"
                 else "  - SHAPE=full: prescribe the planned session — specific lifts, sets, reps, load.\n"
             )
+            journal_block = (
+                "\n\nYOUR PRIVATE JOURNAL ON THIS USER (most recent last) — "
+                "reference what you've noticed; never quote it verbatim:\n"
+                f"{journal_context}\n"
+                if journal_context
+                else ""
+            )
             system = (
                 f"[TASK:nudge_text]\n"
                 f"You are the user's domain coach.\n"
-                f"Voice: {self.persona.voice}\n\n"
+                f"Voice: {self.persona.voice}\n"
+                f"{journal_block}\n"
                 "Write a SINGLE push notification (under 220 chars) that:\n"
                 f"{shape_guidance}"
                 "  - Uses an implementation intention: \"WHEN [cue], I WILL [behavior] AT [location]\".\n"
                 "  - Casts the ask as a vote for the user's identity statement (do not quote it verbatim).\n"
+                "  - If the journal contains a relevant prior observation (e.g. friction, "
+                "a partial last session, a thing the user wrote back), let it shape the "
+                "ask — don't generate a one-size message a tracker would.\n"
                 "  - Carries one of these flavors at random — pick a different one each time:\n"
                 "    [direct prescription] [reframe / lower the bar] [challenge / earn it]\n"
                 "    [curiosity question]   [environmental cue]      [data callback to last session].\n"

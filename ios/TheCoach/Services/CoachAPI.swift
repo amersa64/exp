@@ -90,14 +90,15 @@ actor CoachAPI {
         return result
     }
 
-    func reply(nudgeId: String, outcome: NudgeOutcome, friction: String?) async throws {
-        try await send("/nudge/\(nudgeId)/reply", body: [
+    func reply(nudgeId: String, outcome: NudgeOutcome, friction: String?) async throws -> ReplyResult {
+        let result: ReplyResult = try await post("/nudge/\(nudgeId)/reply", body: [
             "outcome": outcome.rawValue,
             "friction": friction ?? "",
         ])
         await MainActor.run {
             NotificationCenter.default.post(name: .coachStateChanged, object: nil)
         }
+        return result
     }
 
     // HealthKit signals — used for BOTH timing context AND verification (Section 8.1).

@@ -15,6 +15,7 @@ from typing import Callable
 
 from . import safety
 from .integrations import CalendarClient, HealthKitClient
+from .journal import CoachJournalAuthor
 from .llm import LLMClient
 from .models import (
     AtomicAction,
@@ -78,7 +79,16 @@ class Coach:
         self.llm = llm
         self.calendar = calendar
         self.healthkit = healthkit
-        self.nudge_engine = NudgeEngine(store, llm, self.persona, calendar, healthkit)
+        self.journal = CoachJournalAuthor(store, llm)
+        self.nudge_engine = NudgeEngine(
+            store, llm, self.persona, calendar, healthkit,
+            journal=self.journal,
+        )
+
+    # ---- small helper used everywhere we journal ----
+    def _identity_statement(self) -> str | None:
+        ident = self.store.get_identity_for_user(self.user_id)
+        return ident.statement if ident else None
 
     # =========================================================================
     # STAGE 1 — INTAKE  (Section 4.1.1, Rubric B1)
@@ -120,6 +130,20 @@ class Coach:
         profile.derived.update(derived.get("derived", {}))
         profile.updated_at = _now()
         self.store.save_profile(profile)
+
+        # First journal entry: the coach's initial impression. This kicks off
+        # the narrative memory that every subsequent LLM call will read from.
+        self.journal.append(
+            user_id=self.user_id,
+            kind="intake",
+            event={
+                "answers_summary": ", ".join(
+                    f"{k}={v[:60]}" for k, v in answers.items()
+                )[:400],
+                "derived": str(profile.derived)[:300],
+            },
+            identity_statement=self._identity_statement(),
+        )
         return profile, None
 
     # =========================================================================
@@ -330,6 +354,22 @@ class Coach:
         ripples: list[str] = []
         if outcome == NudgeOutcome.DONE:
             ripples = self._grow_world_from_report(nudge)
+
+        # Append an observational entry. This is where pattern recognition
+        # lives: the coach notices "third partial in a row on Lower B" or
+        # "user wrote 'back tight' — flag for substitution next time".
+        action = self.store.get_action(nudge.action_id)
+        self.journal.append(
+            user_id=self.user_id,
+            kind="reply" if friction_note else "log",
+            event={
+                "action_title": (action.title if action else "(unknown)"),
+                "outcome": outcome.value,
+                "friction_note": friction_note or "(none)",
+                "ripples": ripples or "(no growth — non-done outcome)",
+            },
+            identity_statement=self._identity_statement(),
+        )
         return nudge, ripples, None
 
     def _grow_world_from_report(self, nudge: Nudge) -> list[str]:
@@ -377,6 +417,51 @@ class Coach:
         return ripples
 
     # =========================================================================
+    # COACH RESPONSE — short LLM-authored reply to a user's friction note.
+    # =========================================================================
+
+    def compose_coach_response(
+        self,
+        outcome: NudgeOutcome,
+        friction_note: str | None,
+        action_title: str | None = None,
+    ) -> str | None:
+        """
+        Generate a one-line reply in the coach's voice acknowledging what
+        the user said. Returns None when there's nothing to acknowledge
+        (clean done with no note) so callers don't have to special-case.
+
+        Conditioned on the journal: a real LLM will reference past patterns
+        ('this is the third time you mentioned the back — let's swap to
+        goblet next session'). The stub returns a canned-but-honest reply.
+        """
+        if not friction_note and outcome == NudgeOutcome.DONE:
+            return None  # Nothing extra to say; the ripples already speak.
+        identity = self.store.get_identity_for_user(self.user_id)
+        system = (
+            "[TASK:coach_response]\n"
+            f"You are the user's domain coach. Voice: {self.persona.voice}\n"
+            "Write ONE short sentence (<= 160 chars) replying to what the user "
+            "just reported. Acknowledge specifically what they wrote. No platitudes. "
+            "No 'journey'. No emojis. If you spot a pattern from the journal, name it.\n"
+        )
+        journal_block = self.journal.recent_context_block(self.user_id, n=8)
+        if journal_block:
+            system += "\nYour private journal on this user:\n" + journal_block + "\n"
+        user_msg = (
+            f"identity: {identity.statement if identity else '(none)'}\n"
+            f"action: {action_title or '(unknown)'}\n"
+            f"outcome: {outcome.value}\n"
+            f"friction: {friction_note or '(none)'}"
+        )
+        try:
+            resp = self.llm.complete(system, user_msg, max_tokens=200)
+            text = resp.text.strip().strip('"').strip()
+            return text or None
+        except Exception:
+            return None
+
+    # =========================================================================
     # STAGE 6 — ADAPT (Section 4.1.6, Rubric B3 — THE thing that makes us a coach)
     # =========================================================================
 
@@ -398,6 +483,19 @@ class Coach:
             })
         new_program, rationale = self.persona.progression_rules(program, recents)
         self.store.save_program(new_program)
+
+        # Journal the adaptation in the coach's voice — gives the next nudge
+        # context for "why are we doing this load this week?"
+        self.journal.append(
+            user_id=self.user_id,
+            kind="adapt",
+            event={
+                "rationale": rationale,
+                "progression": str(new_program.progression)[:300],
+                "recent_outcomes": ", ".join(r["outcome"] for r in recents) or "(none)",
+            },
+            identity_statement=self._identity_statement(),
+        )
         return rationale
 
     # =========================================================================

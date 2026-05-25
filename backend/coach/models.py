@@ -275,6 +275,58 @@ class ExercisePrescription(BaseModel):
     notes: str = ""
 
 
+# ---------------------------------------------------------------------------
+# Coach Journal — the agent's narrative memory of the user (Principle 2.2:
+# Persistence). This is the layer that separates "a coach who knows you"
+# from "yet another tracker." Every meaningful event appends one short
+# observation written by the LLM in the coach's own voice. The full journal
+# is fed back as context for every subsequent LLM call, so the system
+# accumulates real understanding rather than re-deriving it from scratch.
+# ---------------------------------------------------------------------------
+
+class JournalEntry(BaseModel):
+    """One LLM-authored observation written after a meaningful event."""
+    id: str = Field(default_factory=_uid)
+    at: datetime = Field(default_factory=_now)
+    # What triggered this entry — intake, log, reply, adapt, tick, etc.
+    # Keeps the journal queryable without parsing the text.
+    kind: str
+    # The observation itself, in the coach's voice. ONE sentence, terse.
+    text: str
+    # Whether the coach thinks the user should hear this directly. False by
+    # default — most journal entries are private notes. surface=True drives
+    # the "From your coach" card in the iOS Today tab (Section 6).
+    surface: bool = False
+    # If surface=True, the LLM's reason. Helps debug surfacing logic.
+    reason_for_surface: str | None = None
+
+
+class CoachJournal(BaseModel):
+    """The coach's running notebook about ONE user. Append-only in practice."""
+    user_id: str
+    entries: list[JournalEntry] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=_now)
+
+    def append(self, entry: JournalEntry) -> None:
+        self.entries.append(entry)
+        self.updated_at = entry.at
+
+    def recent(self, n: int = 10) -> list[JournalEntry]:
+        return self.entries[-n:]
+
+    def latest_surfaced(self) -> JournalEntry | None:
+        """Most recent surface=True entry that hasn't yet been acknowledged.
+
+        v1 doesn't track acknowledgment — every call returns the latest. The
+        iOS layer can dedupe on entry.id. Good enough until we see a real
+        case where the same observation keeps reappearing.
+        """
+        for e in reversed(self.entries):
+            if e.surface:
+                return e
+        return None
+
+
 class Session(BaseModel):
     """A single prescribed workout (the content of one AtomicAction)."""
     id: str = Field(default_factory=_uid)

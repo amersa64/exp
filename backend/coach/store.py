@@ -22,6 +22,7 @@ from typing import Iterable
 
 from .models import (
     AtomicAction,
+    CoachJournal,
     Habit,
     Identity,
     Milestone,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS programs (user_id TEXT PRIMARY KEY, json TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS world (user_id TEXT PRIMARY KEY, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS nudges (id TEXT PRIMARY KEY, user_id TEXT, fired_at TEXT, json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS verified_events (id TEXT PRIMARY KEY, user_id TEXT, at TEXT, json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS journals (user_id TEXT PRIMARY KEY, json TEXT NOT NULL);
 """
 
 
@@ -67,7 +69,7 @@ class Store:
 
     def _get(self, table: str, key: str, model):
         row = self.conn.execute(
-            f"SELECT json FROM {table} WHERE {'user_id' if table in ('profiles','programs','world') else 'id'}=?",
+            f"SELECT json FROM {table} WHERE {'user_id' if table in ('profiles','programs','world','journals') else 'id'}=?",
             (key,),
         ).fetchone()
         if not row:
@@ -179,3 +181,11 @@ class Store:
                 "the verified event. Did you bypass WorldState.grow()?"
             )
         self._put("world", w.user_id, w)
+
+    # -- coach journal (narrative memory) -----------------------------------
+
+    def get_journal(self, user_id: str) -> CoachJournal | None:
+        return self._get("journals", user_id, CoachJournal)
+
+    def save_journal(self, j: CoachJournal) -> None:
+        self._put("journals", j.user_id, j)

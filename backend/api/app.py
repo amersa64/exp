@@ -171,12 +171,19 @@ def reply(nudge_id: str, body: ReplyBody, x_user_id: str = Header(default=None))
     coach = _coach_for(_uid(x_user_id))
     nudge, ripples, handoff = coach.record_report(nudge_id, body.outcome, body.friction)
     rationale = coach.adapt()
+    # The coach's spoken reply — separate from the rationale (which is the
+    # programming change). This is what makes a tap feel like a conversation.
+    action = app.state.store.get_action(nudge.action_id)
+    coach_response = coach.compose_coach_response(
+        body.outcome, body.friction, action.title if action else None
+    )
     return {
         "ok": True,
         "ripples": ripples,
         "handoff": handoff,
         "adaptation": rationale,
         "outcome": nudge.outcome.value,
+        "coach_response": coach_response,
     }
 
 
@@ -284,6 +291,31 @@ def coach_state(x_user_id: str = Header(default=None)) -> dict[str, Any]:
             {"nudge_id": f.nudge_id, "title": f.action_title, "prompt": f.prompt}
             for f in followups
         ],
+        # The coach's most recent surface-worthy observation. This is the
+        # "From your coach" card on Today — the moment that makes the app
+        # feel like it sees the user (Principle 2.3). May be None.
+        "latest_observation": _journal_entry_payload(
+            coach.journal.latest_surfaced(user_id)
+        ),
+        # The most recent journal entry of any kind — useful for debug pane.
+        "latest_journal_entry": _journal_entry_payload(
+            (store.get_journal(user_id).entries[-1]
+             if store.get_journal(user_id) and store.get_journal(user_id).entries
+             else None)
+        ),
+    }
+
+
+def _journal_entry_payload(entry) -> dict[str, Any] | None:
+    if entry is None:
+        return None
+    return {
+        "id": entry.id,
+        "at": entry.at.isoformat(),
+        "kind": entry.kind,
+        "text": entry.text,
+        "surface": entry.surface,
+        "reason_for_surface": entry.reason_for_surface,
     }
 
 
@@ -327,12 +359,17 @@ def session_log(action_id: str, body: LogSessionBody, x_user_id: str = Header(de
     except ValueError as e:
         raise HTTPException(404, str(e))
     rationale = coach.adapt()
+    action = app.state.store.get_action(action_id)
+    coach_response = coach.compose_coach_response(
+        body.outcome, body.friction, action.title if action else None
+    )
     return {
         "ok": True,
         "ripples": ripples,
         "handoff": handoff,
         "adaptation": rationale,
         "outcome": nudge.outcome.value,
+        "coach_response": coach_response,
     }
 
 

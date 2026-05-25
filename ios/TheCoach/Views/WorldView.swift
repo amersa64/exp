@@ -578,6 +578,13 @@ private struct TodayContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // The "from your coach" moment — surfaced from the journal when
+            // the brain has something worth saying. Sits ABOVE the last
+            // nudge because it's the rarer + higher-signal thing.
+            if let obs = coachState?.latestObservation {
+                CoachObservationCard(entry: obs)
+            }
+
             // Last nudge or no-nudge-yet state — the brain's most recent move.
             if let nudge = coachState?.lastNudge {
                 LastNudgeCard(nudge: nudge)
@@ -596,6 +603,44 @@ private struct TodayContent: View {
         .sheet(item: $selected, onDismiss: { Task { await refresh() } }) { followup in
             NudgeReplyView(nudgeId: followup.nudgeId, defaultOutcome: "done")
                 .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+/// "From your coach" card — surfaces an LLM-authored observation the brain
+/// thinks the user should actually hear. Distinct visual treatment from the
+/// nudge card so it reads as the coach speaking, not the app firing.
+private struct CoachObservationCard: View {
+    let entry: JournalEntrySnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "quote.opening")
+                    .foregroundStyle(.tint)
+                Text("FROM YOUR COACH")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(0.8)
+            }
+            Text(entry.text)
+                .font(.body)
+                .foregroundStyle(.primary)
+            if let reason = entry.reasonForSurface, !reason.isEmpty {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.accentColor.opacity(0.08))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                }
         }
     }
 }

@@ -107,6 +107,21 @@ struct CoachState: Codable {
     let sessionIndex: Int
     let lastNudge: NudgeSnapshot?
     let openFollowups: [FollowupSnapshot]
+    /// Most recent surface-worthy observation from the coach's journal —
+    /// drives the "From your coach" card on Today. May be nil.
+    let latestObservation: JournalEntrySnapshot?
+    /// Most recent journal entry of any kind — for the debug pane.
+    let latestJournalEntry: JournalEntrySnapshot?
+}
+
+/// One entry from the coach's narrative memory.
+struct JournalEntrySnapshot: Codable, Identifiable {
+    let id: String
+    let at: Date
+    let kind: String
+    let text: String
+    let surface: Bool
+    let reasonForSurface: String?
 }
 
 struct NudgeSnapshot: Codable, Identifiable {
@@ -137,6 +152,22 @@ struct LogSessionResult: Codable {
     let handoff: String?
     let adaptation: String?
     let outcome: String
+    /// LLM-authored acknowledgment from the coach — what makes a log feel
+    /// like a conversation rather than a button tap. Nil for clean "done"
+    /// with no friction note (the ripples speak for themselves there).
+    let coachResponse: String?
+}
+
+/// Mirror of `/nudge/{id}/reply`'s JSON response — same fields as the
+/// session log result; reused so the reply sheet can show the same
+/// post-send acknowledgment + ripples as the Train log sheet.
+struct ReplyResult: Codable {
+    let ok: Bool
+    let ripples: [String]
+    let handoff: String?
+    let adaptation: String?
+    let outcome: String
+    let coachResponse: String?
 }
 
 struct ScheduleResult: Codable {

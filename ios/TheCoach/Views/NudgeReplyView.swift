@@ -13,11 +13,11 @@ struct NudgeReplyView: View {
     @State private var outcome: NudgeOutcome = .done
     @State private var friction: String = ""
     @State private var sending = false
-    @State private var result: ReplyResult?
+    @State private var result: LocalResult?
     @Environment(\.dismiss) var dismiss
 
-    enum ReplyResult: Equatable {
-        case sent(ripples: [String], adaptation: String?)
+    enum LocalResult: Equatable {
+        case sent(ripples: [String], adaptation: String?, coachResponse: String?)
         case failed(String)
     }
 
@@ -49,7 +49,25 @@ struct NudgeReplyView: View {
                     Text("Feeds adaptation. Specific beats polite — 'kids meltdown at 6pm' is more useful than 'busy'.")
                 }
 
-                if case .sent(let ripples, let adaptation) = result {
+                if case .sent(let ripples, let adaptation, let coachResponse) = result {
+                    // The coach's own words first — this is the moment the
+                    // app stops feeling like a tracker. Distinct treatment
+                    // from the world-ripples so it reads as someone speaking.
+                    if let cr = coachResponse, !cr.isEmpty {
+                        Section {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "person.fill.questionmark")
+                                    .foregroundStyle(.tint)
+                                    .imageScale(.large)
+                                Text(cr)
+                                    .font(.callout)
+                                    .foregroundStyle(.primary)
+                            }
+                            .padding(.vertical, 4)
+                        } header: {
+                            Text("From your coach")
+                        }
+                    }
                     Section {
                         ForEach(ripples, id: \.self) { ripple in
                             Label(ripple, systemImage: "sparkles")
@@ -107,24 +125,19 @@ struct NudgeReplyView: View {
     private func send() async {
         sending = true
         do {
-            try await CoachAPI.shared.reply(
+            // The reply now returns the brain's whole response: ripples,
+            // adaptation rationale, AND the coach's spoken acknowledgment.
+            // We render all three — the coach's voice goes first.
+            let resp = try await CoachAPI.shared.reply(
                 nudgeId: nudgeId,
                 outcome: outcome,
                 friction: friction.isEmpty ? nil : friction
             )
-            // Pull a fresh world to show the ripples that resulted.
-            let world = try? await CoachAPI.shared.world()
-            let ripples: [String] = {
-                guard outcome == .done else { return [] }
-                var out: [String] = []
-                if let w = world {
-                    out.append("+\(w.currency) total effort")
-                    if w.streakDays > 0 { out.append("\(w.streakDays)-day streak") }
-                    if w.identityVotes > 0 { out.append("\(w.identityVotes) votes cast") }
-                }
-                return out
-            }()
-            result = .sent(ripples: ripples, adaptation: nil)
+            result = .sent(
+                ripples: resp.ripples,
+                adaptation: resp.adaptation,
+                coachResponse: resp.coachResponse
+            )
         } catch {
             result = .failed(error.localizedDescription)
         }

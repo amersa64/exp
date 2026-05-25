@@ -156,6 +156,44 @@ def _stub_completion(system: str, user: str) -> str:
             "progression_delta": {},
         })
 
+    if tag == "coach_response":
+        # Short, warm, specific. Acknowledges what the user wrote without
+        # platitudes. The real LLM does pattern matching against the journal;
+        # the stub just echoes a generic-but-honest reply.
+        friction = (_extract_field(user, "friction") or "").strip()
+        outcome = (_extract_field(user, "outcome") or "").strip()
+        canned = {
+            "done":    "Heard. The body of work is what matters — that's another rep on the board.",
+            "partial": "That's data, not failure. We hold the load and try again next session.",
+            "not_now": "Logged. The coach will back off and aim for the next real window.",
+            "busy":    "Acknowledged. No retry today — momentum survives one missed slot.",
+            "skipped": "Heard. We don't make up missed sessions; the next one is what matters.",
+        }
+        body = canned.get(outcome, "Got it.")
+        if friction:
+            body += f" Noted: \"{friction[:60]}\"."
+        return body
+
+    if tag == "journal_append":
+        # Stub journal entries — terse, kind-aware, varied enough to read
+        # like a real coach taking notes. Never surface=true offline: the
+        # decision of "this is worth telling the user" requires real
+        # pattern recognition we don't have without the LLM.
+        kind = (_extract_field(user, "event_kind") or "event").lower()
+        outcome = _extract_field(user, "outcome")
+        text_pool = {
+            "intake": "First contact — established baseline. Watching for what they actually do vs what they said.",
+            "log": f"Logged {outcome or 'something'} — too early to call a pattern; one more data point before adjusting.",
+            "reply": "User actually wrote something back — worth more than a button tap. File the language for later.",
+            "adapt": "Numeric adjustment applied; will see in the next two sessions whether it lands or asks too much.",
+            "tick": "Quiet check-in; nothing earned attention.",
+        }
+        return json.dumps({
+            "text": text_pool.get(kind, f"{kind} event noted."),
+            "surface": False,
+            "reason_for_surface": None,
+        })
+
     # Generic fallback.
     return "OK."
 
