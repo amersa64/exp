@@ -156,6 +156,21 @@ def _stub_completion(system: str, user: str) -> str:
             "progression_delta": {},
         })
 
+    if tag == "adapt_narrative":
+        # Coach-voice explanation of a programming change. The technical
+        # diff is upstream (deterministic Python); this is just the WHY in
+        # plain English. Stub keeps it short and concrete; real LLM weaves
+        # in the journal.
+        rationale = _extract_field(user, "technical_rationale") or ""
+        outcome = _extract_field(user, "latest_outcome") or ""
+        if outcome == "done":
+            base = "Cleared the prescribed work. Earning the next jump."
+        elif outcome == "partial":
+            base = "Holding loads — repeat this one cleanly before we push."
+        else:
+            base = "No clean signal this cycle. Holding the program steady."
+        return f"{base} ({rationale[:80]})" if rationale else base
+
     if tag == "coach_response":
         # Short, warm, specific. Acknowledges what the user wrote without
         # platitudes. The real LLM does pattern matching against the journal;

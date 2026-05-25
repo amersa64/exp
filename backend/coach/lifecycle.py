@@ -481,8 +481,21 @@ class Coach:
                 "friction": n.friction_note,
                 "session_name": session_name,
             })
-        new_program, rationale = self.persona.progression_rules(program, recents)
+        new_program, technical_rationale = self.persona.progression_rules(program, recents)
         self.store.save_program(new_program)
+
+        # The Python rule produces a true-but-mechanical sentence ("+10 squat,
+        # +5 bench, +5 row"). The LLM rewrites that into the coach's voice
+        # conditioned on the journal — so the user reads "Bumping squat 10
+        # because you cleared all three sets at 95 with room to spare and your
+        # one partial was sleep-related, not strength-related" instead of a
+        # rule output. Falls back to the technical sentence if the LLM call
+        # fails, so the API contract never loses content.
+        narrative = self._compose_adapt_narrative(
+            technical_rationale=technical_rationale,
+            recents=recents,
+            new_progression=new_program.progression,
+        )
 
         # Journal the adaptation in the coach's voice — gives the next nudge
         # context for "why are we doing this load this week?"
@@ -490,13 +503,48 @@ class Coach:
             user_id=self.user_id,
             kind="adapt",
             event={
-                "rationale": rationale,
+                "rationale": narrative,
+                "technical_rationale": technical_rationale,
                 "progression": str(new_program.progression)[:300],
                 "recent_outcomes": ", ".join(r["outcome"] for r in recents) or "(none)",
             },
             identity_statement=self._identity_statement(),
         )
-        return rationale
+        return narrative
+
+    def _compose_adapt_narrative(
+        self,
+        technical_rationale: str,
+        recents: list[dict],
+        new_progression: dict,
+    ) -> str:
+        """Turn the deterministic Python rationale into a coach-voice sentence."""
+        identity = self.store.get_identity_for_user(self.user_id)
+        latest_outcome = recents[0]["outcome"] if recents else "(none)"
+        latest_friction = recents[0].get("friction") if recents else None
+        system = (
+            "[TASK:adapt_narrative]\n"
+            f"You are the user's domain coach. Voice: {self.persona.voice}\n"
+            "Rewrite the technical programming rationale in ONE sentence "
+            "(<= 200 chars) in your own voice. Reference the actual reason "
+            "the load is moving (or holding). If the journal shows a relevant "
+            "pattern (sleep, friction, recent partials), name it. No moralizing."
+        )
+        journal_block = self.journal.recent_context_block(self.user_id, n=8)
+        if journal_block:
+            system += "\n\nYour private journal on this user:\n" + journal_block
+        user_msg = (
+            f"identity: {identity.statement if identity else '(none)'}\n"
+            f"technical_rationale: {technical_rationale}\n"
+            f"latest_outcome: {latest_outcome}\n"
+            f"latest_friction: {latest_friction or '(none)'}\n"
+            f"new_progression: {new_progression}"
+        )
+        try:
+            text = self.llm.complete(system, user_msg, max_tokens=200).text.strip().strip('"')
+            return text or technical_rationale
+        except Exception:
+            return technical_rationale
 
     # =========================================================================
     # LOOP-CLOSING (Rubric A4) — what did I ask you to do? did you do it?
