@@ -47,8 +47,11 @@ def test_full_flow(client):
     assert r.status_code == 200
     assert r.json()["currency"] == 0  # not yet earned anything
 
-    # 4. Trigger a scheduler tick — should fire a nudge
-    r = client.post("/scheduler/tick")
+    # 4. Trigger a scheduler tick — should fire a nudge.
+    # Pin time to a mid-morning UTC moment so the calendar-window logic
+    # inside the nudge engine has a real slot to schedule against,
+    # regardless of when the test actually runs.
+    r = client.post("/scheduler/tick?now=2026-06-15T10:00:00%2B00:00")
     assert r.status_code == 200
     fired = r.json()["nudges_fired"]
     assert len(fired) == 1

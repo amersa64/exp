@@ -347,9 +347,20 @@ def session_schedule(action_id: str, x_user_id: str = Header(default=None)) -> d
 
 
 @app.post("/scheduler/tick")
-def scheduler_tick() -> dict[str, Any]:
-    """Manually trigger a scheduler tick — for tests + ops. In prod a cron hits this."""
-    res = app.state.scheduler.run_tick()
+def scheduler_tick(now: str | None = None) -> dict[str, Any]:
+    """Manually trigger a scheduler tick — for tests + ops. In prod a cron hits this.
+
+    `now` is an optional ISO-8601 timestamp; lets tests pin a deterministic
+    moment so the nudge engine's calendar-window logic doesn't depend on
+    wall-clock time-of-day.
+    """
+    from datetime import datetime, timezone
+    pinned = None
+    if now:
+        pinned = datetime.fromisoformat(now)
+        if pinned.tzinfo is None:
+            pinned = pinned.replace(tzinfo=timezone.utc)
+    res = app.state.scheduler.run_tick(now=pinned)
     return {
         "users_evaluated": res.users_evaluated,
         "nudges_fired": [n.id for n in res.nudges_fired],

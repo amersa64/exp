@@ -16,6 +16,7 @@ Add more sophistication when a real user outgrows this. Do not over-engineer now
 from __future__ import annotations
 
 from .base import IntakeQuestion, Persona
+from ..exercises import catalog, Exercise
 from ..models import (
     ExercisePrescription,
     Habit,
@@ -24,6 +25,26 @@ from ..models import (
     Session,
     UserProfile,
 )
+
+
+# Equipment values in the catalog that imply an external load — used to decide
+# whether to attach `load_lb` from the program's progression dict, or leave it
+# None (bodyweight, advance via reps next iteration).
+_LOADED_EQUIPMENT = {"barbell", "dumbbell", "cable", "kettlebells", "machine",
+                     "e-z curl bar", "medicine ball"}
+
+
+# Movement-pattern "slots" the program needs. Each slot is an ordered ladder
+# of catalog names — first one the user has equipment for wins. The last
+# entry in every ladder is bodyweight-available so we always have something
+# prescribable (Coach Principle: always owes the user *something* to do).
+_SLOT_LADDERS: dict[str, list[str]] = {
+    "squat":    ["Barbell Squat", "Goblet Squat", "Dumbbell Squat", "Bodyweight Squat"],
+    "press":    ["Barbell Bench Press - Medium Grip", "Dumbbell Bench Press", "Pushups"],
+    "row":      ["Bent Over Barbell Row", "One-Arm Dumbbell Row", "Inverted Row"],
+    "deadlift": ["Barbell Deadlift", "Stiff-Legged Dumbbell Deadlift", "Single Leg Glute Bridge"],
+    "ohp":      ["Standing Military Press", "Standing Dumbbell Press", "Pushups"],
+}
 
 
 # --- Intake (Section 4.1 stage 1) -----------------------------------------------
@@ -140,35 +161,51 @@ def _build_program(profile: UserProfile):
 
 # --- Next session (Section 4.1 stage 3 content) --------------------------------
 
-def _session_a(p: ProgramState) -> Session:
-    sq = p.progression["squat_lb"]
-    bn = p.progression["bench_lb"]
-    rw = p.progression["row_lb"]
+def _prescribe(slot: str, prog_key: str, sets: int, reps: int, rest: int,
+               program: ProgramState, equipment: set[str | None]) -> ExercisePrescription:
+    """
+    Build one prescription from the catalog. Picks the heaviest variant the
+    user has equipment for; loads from the program's progression dict only
+    when the resolved exercise is actually loaded (skips for bodyweight).
+    The first coaching cue from the catalog rides along as `notes`.
+    """
+    ex: Exercise = catalog().pick_for_slot(_SLOT_LADDERS[slot], equipment)
+    load = program.progression.get(prog_key) if ex.equipment in _LOADED_EQUIPMENT else None
+    # Pull one concrete cue from the dataset rather than authoring a generic
+    # one — these are the strings a real strength coach would say at the bar.
+    cue = ex.first_instruction() or ""
+    return ExercisePrescription(
+        name=ex.name,
+        sets=sets,
+        reps=reps,
+        load_lb=load,
+        rest_seconds=rest,
+        notes=cue[:140],
+    )
+
+
+def _session_a(program: ProgramState, profile: UserProfile) -> Session:
+    eq = catalog().equipment_for_profile(profile.answers.get("equipment"))
     return Session(
         name="Lower A",
         exercises=[
-            ExercisePrescription(name="Back Squat", sets=3, reps=5, load_lb=sq, rest_seconds=180,
-                                 notes="Work sets at this load. If all 3x5 feel easy (RPE ≤ 7), report 'too easy'."),
-            ExercisePrescription(name="Bench Press", sets=3, reps=5, load_lb=bn, rest_seconds=150),
-            ExercisePrescription(name="Barbell Row", sets=3, reps=5, load_lb=rw, rest_seconds=120,
-                                 notes="Pause at the bottom for 1s — no momentum."),
+            _prescribe("squat", "squat_lb", 3, 5, 180, program, eq),
+            _prescribe("press", "bench_lb", 3, 5, 150, program, eq),
+            _prescribe("row",   "row_lb",   3, 5, 120, program, eq),
         ],
         expected_minutes=45,
         progression_rule="If completed: +10 lb squat / +5 lb upper next session.",
     )
 
 
-def _session_b(p: ProgramState) -> Session:
-    sq = p.progression["squat_lb"]
-    oh = p.progression["ohp_lb"]
-    dl = p.progression["deadlift_lb"]
+def _session_b(program: ProgramState, profile: UserProfile) -> Session:
+    eq = catalog().equipment_for_profile(profile.answers.get("equipment"))
     return Session(
         name="Lower B",
         exercises=[
-            ExercisePrescription(name="Back Squat", sets=3, reps=5, load_lb=sq, rest_seconds=180),
-            ExercisePrescription(name="Overhead Press", sets=3, reps=5, load_lb=oh, rest_seconds=150),
-            ExercisePrescription(name="Deadlift", sets=1, reps=5, load_lb=dl, rest_seconds=180,
-                                 notes="One working set — reset every rep, no bouncing."),
+            _prescribe("squat",    "squat_lb",    3, 5, 180, program, eq),
+            _prescribe("ohp",      "ohp_lb",      3, 5, 150, program, eq),
+            _prescribe("deadlift", "deadlift_lb", 1, 5, 180, program, eq),
         ],
         expected_minutes=40,
         progression_rule="If completed: +10 lb squat / +5 lb OHP / +10 lb deadlift next session.",
@@ -176,7 +213,11 @@ def _session_b(p: ProgramState) -> Session:
 
 
 def _next_session(program: ProgramState, profile: UserProfile) -> Session:
-    return _session_a(program) if program.progression.get("ab_toggle", 0) == 0 else _session_b(program)
+    return (
+        _session_a(program, profile)
+        if program.progression.get("ab_toggle", 0) == 0
+        else _session_b(program, profile)
+    )
 
 
 # --- Adaptation (Section 4.1 stage 6) -----------------------------------------
