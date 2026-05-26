@@ -27,6 +27,13 @@ from typing import Any
 # `coach.*` so the LLM client sees the key during its own import-time setup.
 # Avoids adding python-dotenv as a dependency — the format is trivial.
 def _load_dotenv() -> None:
+    # Skip when pytest is in charge — the test suite scrubs LLM env vars in
+    # an autouse fixture (see backend/tests/conftest.py) so every test runs
+    # against the deterministic stub. If we re-loaded .env on each test's
+    # re-import of api.app we'd silently undo that and start charging the
+    # user's API credits for unit tests.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
     # backend/api/app.py → repo root is three parents up.
     env_path = Path(__file__).resolve().parents[2] / ".env"
     if not env_path.exists():

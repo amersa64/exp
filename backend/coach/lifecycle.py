@@ -119,11 +119,18 @@ class Coach:
         profile.answers.update(answers)
 
         # Use the LLM to derive a structured profile from the free-text answers.
+        # Pin the value types — without this, OpenAI tends to return lists for
+        # multi-valued fields ('injuries': ['knee', 'shoulder']) where Anthropic
+        # collapses to a string. Either shape parses now (see UserProfile.derived)
+        # but downstream prompt assembly is simpler when values are scalar.
         system = (
             "[TASK:derive_profile]\n"
             f"You are a {self.domain} coach reviewing intake answers.\n"
             f"Voice: {self.persona.voice}\n"
-            "Return JSON with keys: derived (object of typed fields), summary (one sentence)."
+            "Return JSON with keys: derived (object of typed fields), summary (one sentence).\n"
+            "Each value in `derived` MUST be a scalar — string, integer, or float. "
+            "Do not return lists, objects, or null. Collapse multi-value notes into "
+            "a single string (e.g. injuries: \"left knee, mild shoulder\")."
         )
         user_msg = "Answers:\n" + "\n".join(f"{k}: {v}" for k, v in answers.items())
         derived = self.llm.complete_json(system, user_msg, max_tokens=400)

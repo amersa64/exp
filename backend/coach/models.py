@@ -110,7 +110,12 @@ class UserProfile(BaseModel):
     user_id: str
     domain: str
     answers: dict[str, str] = Field(default_factory=dict)
-    derived: dict[str, str | int | float] = Field(default_factory=dict)
+    # `derived` is whatever the LLM extracted from intake answers — different
+    # providers shape this differently (OpenAI tends to return lists for
+    # multi-valued fields like injuries; Anthropic stays scalar). We accept
+    # both rather than fight the model. Persona code that READS this should
+    # coerce defensively (str(value) or " ".join(value)).
+    derived: dict[str, str | int | float | list[str]] = Field(default_factory=dict)
     # e.g. {"experience": "novice", "days_per_week": 3, "injuries": "none",
     #       "equipment": "barbell+rack", "1rm_squat_lb": 135}
     updated_at: datetime = Field(default_factory=_now)
