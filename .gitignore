@@ -5,6 +5,9 @@ build/
 dist/
 .pytest_cache/
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 .venv/
 .env

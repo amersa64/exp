@@ -16,7 +16,35 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+
+
+# ---- .env autoload --------------------------------------------------------
+# Tiny inline loader so the user can put ANTHROPIC_API_KEY in a `.env` at
+# the repo root and the backend picks it up no matter how it's launched
+# (deploy.sh, raw uvicorn, IDE, tests). Done BEFORE importing anything from
+# `coach.*` so the LLM client sees the key during its own import-time setup.
+# Avoids adding python-dotenv as a dependency — the format is trivial.
+def _load_dotenv() -> None:
+    # backend/api/app.py → repo root is three parents up.
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return
+    for raw in env_path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        value = value.strip().strip('"').strip("'")
+        # Don't clobber values already explicitly exported in the shell — the
+        # shell wins, which is what users expect from .env semantics.
+        if value and key.strip() not in os.environ:
+            os.environ[key.strip()] = value
+
+
+_load_dotenv()
+
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
@@ -107,8 +135,16 @@ class LogSessionBody(BaseModel):
 # ---- routes ----------------------------------------------------------------
 
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+def healthz() -> dict[str, Any]:
+    # Surface whether the LLM is real or stubbed. Lets the caller (and the
+    # deploy script) see at a glance whether nudges and coach replies will
+    # be canned or genuinely conditioned on the user's history.
+    llm: LLMClient = app.state.llm
+    return {
+        "status": "ok",
+        "llm_mode": "real" if llm._client is not None else "stub",
+        "llm_model": llm.model,
+    }
 
 
 @app.get("/intake/questions")

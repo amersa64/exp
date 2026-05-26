@@ -11,7 +11,11 @@
 set -euo pipefail
 
 # ---- Project constants (update if your device or team changes) ----
-DEVICE_UDID="00008120-0004046A3613C01E"   # Amer's iPhone 14 Pro
+# Optional pin — set this to a specific device identifier (from
+# `xcrun devicectl list devices`) if you have multiple iPhones connected
+# and want to target a specific one. Leave empty to auto-detect the first
+# connected device.
+DEVICE_UDID="${DEVICE_UDID:-}"
 BUNDLE_ID="ai.zaimler.TheCoach"
 SCHEME="TheCoach"
 BACKEND_PORT=8765
@@ -97,8 +101,22 @@ if [[ "$REGEN" -eq 1 ]] || [[ ! -d ios/TheCoach.xcodeproj ]] \
 fi
 
 # ---------- 5. Device check ----------
-xcrun devicectl list devices 2>/dev/null | grep -q "connected" \
-    || fail "No connected iPhone detected. Plug it in, unlock, trust the Mac."
+# Auto-detect the first connected device if DEVICE_UDID is empty. Lets the
+# script survive iPhone upgrades / swaps without editing this file. If
+# multiple iPhones are connected, set DEVICE_UDID in the environment.
+if [[ -z "$DEVICE_UDID" ]]; then
+    # Device names can contain spaces, so awk column slicing is fragile.
+    # Extract the UDID by its canonical 8-4-4-4-12 hex format instead.
+    DEVICE_UDID="$(xcrun devicectl list devices 2>/dev/null \
+        | grep connected \
+        | grep -Eo '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' \
+        | head -1)"
+    [[ -n "$DEVICE_UDID" ]] || fail "No connected iPhone detected. Plug it in, unlock, trust the Mac."
+    step "Auto-detected device: $DEVICE_UDID"
+else
+    xcrun devicectl list devices 2>/dev/null | grep -q "$DEVICE_UDID" \
+        || fail "Pinned DEVICE_UDID=$DEVICE_UDID is not currently connected."
+fi
 
 # ---------- 6. Build ----------
 DD="$(pwd)/ios/build"
