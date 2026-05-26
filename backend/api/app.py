@@ -136,13 +136,14 @@ class LogSessionBody(BaseModel):
 
 @app.get("/healthz")
 def healthz() -> dict[str, Any]:
-    # Surface whether the LLM is real or stubbed. Lets the caller (and the
-    # deploy script) see at a glance whether nudges and coach replies will
-    # be canned or genuinely conditioned on the user's history.
+    # Surface whether the LLM is real or stubbed AND which provider —
+    # lets the caller (and the deploy script) see at a glance whether
+    # nudges and coach replies are canned or genuinely Claude/GPT-authored.
     llm: LLMClient = app.state.llm
     return {
         "status": "ok",
         "llm_mode": "real" if llm._client is not None else "stub",
+        "llm_provider": llm.provider_name,
         "llm_model": llm.model,
     }
 

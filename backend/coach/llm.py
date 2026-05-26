@@ -1,11 +1,22 @@
 """
-LLM client used by intake, programming, nudge-text generation, and adaptation.
+LLM client used by intake, programming, nudge-text generation, adaptation,
+and the coach journal.
 
-Wraps the Anthropic SDK when an API key is present. Falls back to a deterministic
-stub LLM so the whole coaching lifecycle remains runnable and testable offline.
+Supports two providers behind one interface:
+  - Anthropic Claude (ANTHROPIC_API_KEY)
+  - OpenAI         (OPENAI_API_KEY)
+
+Selection rules (in order):
+  1) COACH_LLM_PROVIDER env var, if set: must be 'anthropic' or 'openai'.
+  2) Whichever key is present in the environment wins. If both are set,
+     Anthropic wins (the prompts in this repo were tuned against Claude).
+  3) If neither key is present, the client falls through to a deterministic
+     stub so the whole coaching lifecycle remains runnable and testable
+     offline (Section 8: no required external services).
 
 The stub is intentionally not a chatbot — it returns canned but structurally
-correct responses so the rest of the system can be exercised end-to-end.
+correct responses tagged by [TASK:...] markers in the system prompt so the
+rest of the system can be exercised end-to-end.
 """
 
 from __future__ import annotations
@@ -14,7 +25,7 @@ import json
 import os
 import random
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass
@@ -23,57 +34,192 @@ class LLMResponse:
     used_stub: bool
 
 
-class LLMClient:
-    """Thin wrapper; subclasses or the stub path can be swapped in tests."""
+# ---------------------------------------------------------------------------
+# Provider interface — small, deliberately not abstract-class-y. Each
+# provider takes a system + user prompt and returns text. JSON-mode is
+# handled by the LLMClient by appending a contract sentence to the system
+# prompt (and, for OpenAI, opting into native response_format).
+# ---------------------------------------------------------------------------
 
+class _Provider(Protocol):
+    name: str          # "anthropic" | "openai"
+    model: str
+
+    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str: ...
+
+
+class _AnthropicProvider:
+    """Wraps anthropic.Anthropic.messages.create()."""
+
+    name = "anthropic"
     DEFAULT_MODEL = "claude-sonnet-4-6"
 
     def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.environ.get("COACH_LLM_MODEL", self.DEFAULT_MODEL)
-        self._client = None
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            try:
-                import anthropic  # type: ignore
-                self._client = anthropic.Anthropic()
-            except Exception:
-                self._client = None
+        import anthropic  # imported lazily so a missing dep doesn't break tests
+        self._sdk = anthropic.Anthropic()
+        self.model = model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int = 600) -> LLMResponse:
-        if self._client is None:
-            return LLMResponse(text=_stub_completion(system, user), used_stub=True)
-        msg = self._client.messages.create(
+    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str:
+        # Anthropic doesn't have a native JSON response_format yet; the
+        # caller has already appended a "respond with JSON only" sentence
+        # to the system prompt. That contract is enough in practice.
+        msg = self._sdk.messages.create(
             model=self.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
-        text = "".join(
+        return "".join(
             block.text for block in msg.content if getattr(block, "type", "") == "text"
         )
-        return LLMResponse(text=text, used_stub=False)
+
+
+class _OpenAIProvider:
+    """Wraps openai.OpenAI.chat.completions.create()."""
+
+    name = "openai"
+    # gpt-4o-mini balances cost and quality for the journal / nudge volume
+    # this app generates (tens of calls per active user per day). Override
+    # via COACH_LLM_MODEL when you want gpt-4o, o1, gpt-5, etc.
+    DEFAULT_MODEL = "gpt-4o-mini"
+
+    def __init__(self, model: str | None = None) -> None:
+        import openai  # lazy import
+        self._sdk = openai.OpenAI()
+        self.model = model or self.DEFAULT_MODEL
+
+    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str:
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+        }
+        if json_mode:
+            # OpenAI requires that the prompt mention "json" when this is
+            # set — the LLMClient.complete_json wrapper guarantees that.
+            kwargs["response_format"] = {"type": "json_object"}
+        resp = self._sdk.chat.completions.create(**kwargs)
+        return resp.choices[0].message.content or ""
+
+
+# ---------------------------------------------------------------------------
+# Provider selection — single chokepoint so the rest of the code never
+# has to know which SDK is in use.
+# ---------------------------------------------------------------------------
+
+def _select_provider(model: str | None) -> _Provider | None:
+    explicit = (os.environ.get("COACH_LLM_PROVIDER") or "").strip().lower()
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+
+    # Explicit override wins, but only if the matching key is present —
+    # otherwise we'd return a provider that crashes on its first call.
+    if explicit == "anthropic":
+        if not has_anthropic:
+            return None
+        return _safe_init(_AnthropicProvider, model)
+    if explicit == "openai":
+        if not has_openai:
+            return None
+        return _safe_init(_OpenAIProvider, model)
+    if explicit:
+        # Unknown value — fall through to auto-detect, don't crash.
+        pass
+
+    # Auto-detect: Anthropic wins ties because the prompts in this repo
+    # were authored against Claude's style. Users can pin OpenAI explicitly
+    # via COACH_LLM_PROVIDER if they prefer.
+    if has_anthropic:
+        return _safe_init(_AnthropicProvider, model)
+    if has_openai:
+        return _safe_init(_OpenAIProvider, model)
+    return None
+
+
+def _safe_init(cls, model: str | None) -> _Provider | None:
+    """SDK import or auth issue should degrade to stub, never crash startup."""
+    try:
+        return cls(model)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Public client — what the rest of the codebase imports.
+# ---------------------------------------------------------------------------
+
+class LLMClient:
+    """Provider-agnostic façade. Falls through to a stub when no key is set."""
+
+    def __init__(self, model: str | None = None) -> None:
+        # COACH_LLM_MODEL lets a user pin a specific model name regardless
+        # of provider (e.g. claude-opus-4-1 or gpt-4o). Provider defaults
+        # apply when this is unset.
+        chosen_model = model or os.environ.get("COACH_LLM_MODEL") or None
+        self._provider: _Provider | None = _select_provider(chosen_model)
+        # `model` is what /healthz reports — keep it informative whether
+        # we ended up on a real provider or the stub.
+        self.model = (
+            self._provider.model if self._provider
+            else (chosen_model or "stub")
+        )
+
+    # Backwards-compatible attribute the previous code path used to detect
+    # real-vs-stub mode. Keeps callers (and the /healthz route) working
+    # without a sweep.
+    @property
+    def _client(self) -> _Provider | None:
+        return self._provider
+
+    @property
+    def provider_name(self) -> str:
+        return self._provider.name if self._provider else "stub"
+
+    def complete(self, system: str, user: str, max_tokens: int = 600) -> LLMResponse:
+        if self._provider is None:
+            return LLMResponse(text=_stub_completion(system, user), used_stub=True)
+        try:
+            text = self._provider.complete(system, user, max_tokens, json_mode=False)
+            return LLMResponse(text=text, used_stub=False)
+        except Exception:
+            # Any provider failure (rate limit, auth, network) silently
+            # degrades to the stub — the coaching loop never stalls because
+            # the LLM hiccupped.
+            return LLMResponse(text=_stub_completion(system, user), used_stub=True)
 
     def complete_json(self, system: str, user: str, max_tokens: int = 800) -> dict[str, Any]:
-        """Ask for a JSON object. Falls back to stub on any parse failure."""
-        resp = self.complete(
-            system=system + "\n\nRespond ONLY with a single JSON object. No prose, no markdown.",
-            user=user,
-            max_tokens=max_tokens,
-        )
-        text = resp.text.strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.lower().startswith("json"):
-                text = text[4:].strip()
+        """
+        Ask for a JSON object. Falls back to stub on any parse failure.
+
+        We append the "JSON only" contract to the system prompt for both
+        providers, AND opt into OpenAI's native response_format when on
+        OpenAI. Both belts and suspenders — providers are flaky enough
+        about format adherence that overspecifying is correct.
+        """
+        contract = "\n\nRespond ONLY with a single JSON object. No prose, no markdown."
+        full_system = system + contract
+        if self._provider is None:
+            return json.loads(_stub_completion(system, user))
         try:
+            text = self._provider.complete(
+                full_system, user, max_tokens, json_mode=True
+            ).strip()
+            if text.startswith("```"):
+                text = text.strip("`")
+                if text.lower().startswith("json"):
+                    text = text[4:].strip()
             return json.loads(text)
-        except json.JSONDecodeError:
+        except Exception:
             return json.loads(_stub_completion(system, user))
 
 
 # ---------------------------------------------------------------------------
 # Stub completions — keep the system honest and runnable without a key.
-# These are deliberately varied (Section 7.1) and the intake/adapt stubs return
-# realistic JSON the persona can ingest.
+# These are deliberately varied (Section 7.1) and the intake/adapt stubs
+# return realistic JSON the persona can ingest.
 # ---------------------------------------------------------------------------
 
 _NUDGE_VOICES_FULL = [
