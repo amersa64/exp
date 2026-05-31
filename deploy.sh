@@ -23,6 +23,17 @@ BACKEND_PORT=8765
 
 cd "$(dirname "$0")"
 
+# ---- Export COACH_API_TOKEN from .env for xcodegen substitution ----
+# xcodegen substitutes ${COACH_API_TOKEN} in ios/project.yml into the app's
+# Info.plist so the client can authenticate to the hardened backend. The
+# backend itself reads .env directly, so we only need this one var exported
+# here. Extracted by prefix-strip (not `source`) to avoid evaluating other
+# secrets that may contain shell-special characters.
+if [[ -z "${COACH_API_TOKEN:-}" && -f .env ]]; then
+    token_line="$(grep -E '^COACH_API_TOKEN=' .env | head -1 || true)"
+    [[ -n "$token_line" ]] && export COACH_API_TOKEN="${token_line#COACH_API_TOKEN=}"
+fi
+
 RESTART_BACKEND=0
 SKIP_IOS=0
 SKIP_BACKEND=0
@@ -48,8 +59,14 @@ EXPECTED_URL="http://$IP:$BACKEND_PORT"
 REGEN=0
 
 # ---------- 2. Sync CoachBackendURL in project.yml ----------
+# Cloud mode: if CoachBackendURL is an https:// URL (e.g. the Fly deployment),
+# leave it alone — don't clobber it with the Mac's LAN IP. LAN tethering only
+# applies when it's an http:// URL.
+CURRENT_URL="$(grep -E 'CoachBackendURL:' ios/project.yml | awk '{print $2}')"
 if [[ "$SKIP_IOS" -eq 0 ]]; then
-    if ! grep -q "CoachBackendURL: $EXPECTED_URL\$" ios/project.yml; then
+    if [[ "$CURRENT_URL" == https://* ]]; then
+        step "CoachBackendURL is a cloud URL ($CURRENT_URL) — leaving it (skipping LAN sync)."
+    elif ! grep -q "CoachBackendURL: $EXPECTED_URL\$" ios/project.yml; then
         step "Updating CoachBackendURL -> $EXPECTED_URL"
         # macOS sed: -i '' for in-place without backup
         sed -i '' -E "s|CoachBackendURL: http://[^[:space:]]+|CoachBackendURL: $EXPECTED_URL|" ios/project.yml

@@ -20,6 +20,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.conftest import session_log_body
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -66,7 +68,7 @@ def test_log_appends_journal_entry_with_outcome(client):
     nxt = client.get("/session/next", headers=h).json()
     client.post(
         f"/session/{nxt['action_id']}/log",
-        json={"outcome": "partial", "friction": "low energy"},
+        json={**session_log_body(nxt, "partial"), "friction": "low energy"},
         headers=h,
     )
     state = client.get("/coach/state", headers=h).json()
@@ -85,7 +87,7 @@ def test_coach_response_returned_with_friction(client):
     nxt = client.get("/session/next", headers=h).json()
     resp = client.post(
         f"/session/{nxt['action_id']}/log",
-        json={"outcome": "partial", "friction": "right knee twinge"},
+        json={**session_log_body(nxt, "partial"), "friction": "right knee twinge"},
         headers=h,
     ).json()
     # Contract: when the user wrote something, the coach acknowledges it.
@@ -100,7 +102,7 @@ def test_clean_done_omits_coach_response(client):
     nxt = client.get("/session/next", headers=h).json()
     resp = client.post(
         f"/session/{nxt['action_id']}/log",
-        json={"outcome": "done"},
+        json=session_log_body(nxt, "done"),
         headers=h,
     ).json()
     # Clean done with no note → ripples speak for themselves, no extra reply.
@@ -113,7 +115,7 @@ def test_adaptation_narrative_is_coach_voice(client):
     nxt = client.get("/session/next", headers=h).json()
     resp = client.post(
         f"/session/{nxt['action_id']}/log",
-        json={"outcome": "done"},
+        json=session_log_body(nxt, "done"),
         headers=h,
     ).json()
     rationale = resp["adaptation"]
@@ -132,7 +134,7 @@ def test_journal_persists_across_events(client):
         nxt = client.get("/session/next", headers=h).json()
         client.post(
             f"/session/{nxt['action_id']}/log",
-            json={"outcome": "done"},
+            json=session_log_body(nxt, "done"),
             headers=h,
         )
     # Read journal directly via the in-process store — the API doesn't

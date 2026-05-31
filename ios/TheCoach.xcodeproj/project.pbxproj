@@ -7,15 +7,30 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BF364791F14F52680F3ECAB /* PelletFlowHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EAF9315422667AD0E24A80 /* PelletFlowHero.swift */; };
 		2A0B65BCC63B870A15F2834C /* NudgeReplyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */; };
+		3020184259A49B5EE7FF386D /* CoachTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8587BFAF9CB06397F846229 /* CoachTabView.swift */; };
+		4240A6BA61814FC5E5DED8AD /* ExerciseDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2730F18BFEC938C3013F5EBE /* ExerciseDetailSheet.swift */; };
+		50E946EF788DD5C1FB31D7F0 /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B495F90988DF420737DC403 /* ActiveSessionView.swift */; };
+		55418E371BE79A9AB78342F2 /* CoachFeedbackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7D01ADDCBF4FA5C1ADB78C /* CoachFeedbackSheet.swift */; };
 		55982EFC73FA35871B8BE2C6 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0645FB02D513439315BE5608 /* SessionStore.swift */; };
 		57ABB599E98DDC357B2D6EAB /* BackendHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 055877961A47BD4B52B5C3A3 /* BackendHealth.swift */; };
+		76AC8BC27585CE135E88F591 /* RestTimerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41D1D28F36E25B067063481 /* RestTimerBar.swift */; };
+		7F8C4FB8A1E9CD43D599FBA7 /* DevScenarioSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30EFAEC5E4C2E3C664CD11FA /* DevScenarioSheet.swift */; };
+		7FE45BDC2DA64EB7B10C7651 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEE3177BFF32F31CDF597882 /* NotificationScheduler.swift */; };
 		8330F497273EE57E9E34BE52 /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2333F8A96201B8A5DC8DF159 /* TrainView.swift */; };
+		8B647FA9C2F8E1AB46F09812 /* ExerciseLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC34C51BE7D4191476FD164B /* ExerciseLogView.swift */; };
 		9482EC06007EB0B69D1C3D9B /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1535909A05416C4A043EC5AF /* ErrorView.swift */; };
 		9D13F21966F1E6DF9A936C25 /* Hierarchy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124267EA82CBE09799FE3011 /* Hierarchy.swift */; };
 		A1B72AC4A5D750BA84BC714B /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2912E6451B7B0BF4F9F7FA /* HealthKitService.swift */; };
+		A7E3B67F4EA6E247EBCE2922 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC37F5309BF4F06F3AD3B1B1 /* Assets.xcassets */; };
 		ADAD26AF44C3DAEE1E2E85A0 /* CoachAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC145F649CEC1EBFF871A580 /* CoachAPI.swift */; };
 		B32D11F71F2A3ED5FC09A5C4 /* TheCoachApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB221AD57118262E94B16238 /* TheCoachApp.swift */; };
+		B779955D74FCA1F4EC251245 /* ActiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68AC9928D5813ECF92432A37 /* ActiveSession.swift */; };
+		BD8CD05D2617B2529BFF2B08 /* SwapSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799C3916E468EEE97F063BFF /* SwapSheet.swift */; };
+		C8F52615B35E47F88FA2EBF1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8FAC786408E8A855C217478 /* Theme.swift */; };
+		CEF4AC2E612A2AFB11AE5162 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910DB20176CCEA283D8D63C0 /* LocationManager.swift */; };
+		D6E57E90B22B101352C4C6E9 /* AdjustmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62245D4C4D5AD0EDD8C02FA5 /* AdjustmentsView.swift */; };
 		D7CE1AE98F7DBA840C260D87 /* WorldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 434CD44D6865A9D5251FCCDB /* WorldView.swift */; };
 		F35A6596DA73602FF3ED6463 /* IntakeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2427FF0AD09D64BBC77998 /* IntakeView.swift */; };
 /* End PBXBuildFile section */
@@ -24,22 +39,39 @@
 		055877961A47BD4B52B5C3A3 /* BackendHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendHealth.swift; sourceTree = "<group>"; };
 		0645FB02D513439315BE5608 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
 		0B2427FF0AD09D64BBC77998 /* IntakeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntakeView.swift; sourceTree = "<group>"; };
+		0F7D01ADDCBF4FA5C1ADB78C /* CoachFeedbackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachFeedbackSheet.swift; sourceTree = "<group>"; };
 		124267EA82CBE09799FE3011 /* Hierarchy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Hierarchy.swift; sourceTree = "<group>"; };
 		1535909A05416C4A043EC5AF /* ErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorView.swift; sourceTree = "<group>"; };
 		1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NudgeReplyView.swift; sourceTree = "<group>"; };
 		1D3C6E6379ABD3A478A5DAAE /* TheCoach.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TheCoach.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2333F8A96201B8A5DC8DF159 /* TrainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainView.swift; sourceTree = "<group>"; };
+		2730F18BFEC938C3013F5EBE /* ExerciseDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseDetailSheet.swift; sourceTree = "<group>"; };
+		30EFAEC5E4C2E3C664CD11FA /* DevScenarioSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevScenarioSheet.swift; sourceTree = "<group>"; };
+		35D3F37745C443ABD8935D91 /* TheCoach.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TheCoach.entitlements; sourceTree = "<group>"; };
+		3B495F90988DF420737DC403 /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
 		434CD44D6865A9D5251FCCDB /* WorldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldView.swift; sourceTree = "<group>"; };
+		62245D4C4D5AD0EDD8C02FA5 /* AdjustmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustmentsView.swift; sourceTree = "<group>"; };
+		68AC9928D5813ECF92432A37 /* ActiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSession.swift; sourceTree = "<group>"; };
 		6FE55F611552D59386F45FF3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		799C3916E468EEE97F063BFF /* SwapSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwapSheet.swift; sourceTree = "<group>"; };
+		910DB20176CCEA283D8D63C0 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		A41D1D28F36E25B067063481 /* RestTimerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimerBar.swift; sourceTree = "<group>"; };
 		AB221AD57118262E94B16238 /* TheCoachApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TheCoachApp.swift; sourceTree = "<group>"; };
+		AEE3177BFF32F31CDF597882 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
+		B8587BFAF9CB06397F846229 /* CoachTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachTabView.swift; sourceTree = "<group>"; };
 		BF2912E6451B7B0BF4F9F7FA /* HealthKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitService.swift; sourceTree = "<group>"; };
+		DC37F5309BF4F06F3AD3B1B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E5EAF9315422667AD0E24A80 /* PelletFlowHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PelletFlowHero.swift; sourceTree = "<group>"; };
 		EC145F649CEC1EBFF871A580 /* CoachAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachAPI.swift; sourceTree = "<group>"; };
+		EC34C51BE7D4191476FD164B /* ExerciseLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseLogView.swift; sourceTree = "<group>"; };
+		F8FAC786408E8A855C217478 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		20756D35D1DEF1DB1BD9B552 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				68AC9928D5813ECF92432A37 /* ActiveSession.swift */,
 				124267EA82CBE09799FE3011 /* Hierarchy.swift */,
 			);
 			path = Models;
@@ -48,9 +80,20 @@
 		342714DA038AE10E374F8393 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				3B495F90988DF420737DC403 /* ActiveSessionView.swift */,
+				62245D4C4D5AD0EDD8C02FA5 /* AdjustmentsView.swift */,
+				0F7D01ADDCBF4FA5C1ADB78C /* CoachFeedbackSheet.swift */,
+				B8587BFAF9CB06397F846229 /* CoachTabView.swift */,
+				30EFAEC5E4C2E3C664CD11FA /* DevScenarioSheet.swift */,
 				1535909A05416C4A043EC5AF /* ErrorView.swift */,
+				2730F18BFEC938C3013F5EBE /* ExerciseDetailSheet.swift */,
+				EC34C51BE7D4191476FD164B /* ExerciseLogView.swift */,
 				0B2427FF0AD09D64BBC77998 /* IntakeView.swift */,
 				1BAF8BE69DDBDAE7C6584C45 /* NudgeReplyView.swift */,
+				E5EAF9315422667AD0E24A80 /* PelletFlowHero.swift */,
+				A41D1D28F36E25B067063481 /* RestTimerBar.swift */,
+				799C3916E468EEE97F063BFF /* SwapSheet.swift */,
+				F8FAC786408E8A855C217478 /* Theme.swift */,
 				2333F8A96201B8A5DC8DF159 /* TrainView.swift */,
 				434CD44D6865A9D5251FCCDB /* WorldView.swift */,
 			);
@@ -71,6 +114,8 @@
 				055877961A47BD4B52B5C3A3 /* BackendHealth.swift */,
 				EC145F649CEC1EBFF871A580 /* CoachAPI.swift */,
 				BF2912E6451B7B0BF4F9F7FA /* HealthKitService.swift */,
+				910DB20176CCEA283D8D63C0 /* LocationManager.swift */,
+				AEE3177BFF32F31CDF597882 /* NotificationScheduler.swift */,
 				0645FB02D513439315BE5608 /* SessionStore.swift */,
 			);
 			path = Services;
@@ -87,7 +132,9 @@
 		F6FBF1E9F64C96FA6C74058B /* TheCoach */ = {
 			isa = PBXGroup;
 			children = (
+				DC37F5309BF4F06F3AD3B1B1 /* Assets.xcassets */,
 				6FE55F611552D59386F45FF3 /* Info.plist */,
+				35D3F37745C443ABD8935D91 /* TheCoach.entitlements */,
 				AB221AD57118262E94B16238 /* TheCoachApp.swift */,
 				20756D35D1DEF1DB1BD9B552 /* Models */,
 				95CB83B122507CC750DBC9A4 /* Services */,
@@ -104,6 +151,7 @@
 			buildConfigurationList = 87D4C423445EFDEB866CFDAD /* Build configuration list for PBXNativeTarget "TheCoach" */;
 			buildPhases = (
 				1B8824FCDFA092645AC60E94 /* Sources */,
+				198EF8B10F1FEC89992994A5 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -150,20 +198,45 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		198EF8B10F1FEC89992994A5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7E3B67F4EA6E247EBCE2922 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		1B8824FCDFA092645AC60E94 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B779955D74FCA1F4EC251245 /* ActiveSession.swift in Sources */,
+				50E946EF788DD5C1FB31D7F0 /* ActiveSessionView.swift in Sources */,
+				D6E57E90B22B101352C4C6E9 /* AdjustmentsView.swift in Sources */,
 				57ABB599E98DDC357B2D6EAB /* BackendHealth.swift in Sources */,
 				ADAD26AF44C3DAEE1E2E85A0 /* CoachAPI.swift in Sources */,
+				55418E371BE79A9AB78342F2 /* CoachFeedbackSheet.swift in Sources */,
+				3020184259A49B5EE7FF386D /* CoachTabView.swift in Sources */,
+				7F8C4FB8A1E9CD43D599FBA7 /* DevScenarioSheet.swift in Sources */,
 				9482EC06007EB0B69D1C3D9B /* ErrorView.swift in Sources */,
+				4240A6BA61814FC5E5DED8AD /* ExerciseDetailSheet.swift in Sources */,
+				8B647FA9C2F8E1AB46F09812 /* ExerciseLogView.swift in Sources */,
 				A1B72AC4A5D750BA84BC714B /* HealthKitService.swift in Sources */,
 				9D13F21966F1E6DF9A936C25 /* Hierarchy.swift in Sources */,
 				F35A6596DA73602FF3ED6463 /* IntakeView.swift in Sources */,
+				CEF4AC2E612A2AFB11AE5162 /* LocationManager.swift in Sources */,
+				7FE45BDC2DA64EB7B10C7651 /* NotificationScheduler.swift in Sources */,
 				2A0B65BCC63B870A15F2834C /* NudgeReplyView.swift in Sources */,
+				0BF364791F14F52680F3ECAB /* PelletFlowHero.swift in Sources */,
+				76AC8BC27585CE135E88F591 /* RestTimerBar.swift in Sources */,
 				55982EFC73FA35871B8BE2C6 /* SessionStore.swift in Sources */,
+				BD8CD05D2617B2529BFF2B08 /* SwapSheet.swift in Sources */,
 				B32D11F71F2A3ED5FC09A5C4 /* TheCoachApp.swift in Sources */,
+				C8F52615B35E47F88FA2EBF1 /* Theme.swift in Sources */,
 				8330F497273EE57E9E34BE52 /* TrainView.swift in Sources */,
 				D7CE1AE98F7DBA840C260D87 /* WorldView.swift in Sources */,
 			);
@@ -176,6 +249,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TheCoach/TheCoach.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TheCoach/Info.plist;
@@ -185,7 +259,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = ai.zaimler.TheCoach;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -193,6 +267,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = TheCoach/TheCoach.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TheCoach/Info.plist;
@@ -202,7 +277,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = ai.zaimler.TheCoach;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -259,7 +334,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -269,7 +343,6 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -320,7 +393,6 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -329,7 +401,6 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

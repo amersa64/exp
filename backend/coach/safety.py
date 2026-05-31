@@ -23,6 +23,18 @@ class SafetySignal:
 
 # Patterns are deliberately broad. Tune later, never narrow without review.
 _PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
+    ("neurological",
+     re.compile(
+         r"\b(stroke|TIA|transient ischemic|seizure|epilep\w*|"
+         r"multiple sclerosis|\bMS\b|parkinson\w*|paralysis|paralyz\w*|"
+         r"hemiparesis|hemiplegi\w*|"
+         r"brain (injury|bleed|tumor)|concussion|TBI|"
+         r"spinal cord|cauda equina)\b", re.I),
+     "What you described is a serious neurological condition. I'm not the "
+     "right starting point — please get a physiatrist, neuro-PT, or your "
+     "treating clinician to sign off on a movement plan first, then bring "
+     "their guidance back here. I'll hold off on prescribing until you have "
+     "that. Your safety beats my coaching every time."),
     ("mental_health",
      re.compile(r"\b(suicid\w*|kill myself|end (it|my life)|self[- ]?harm|hopeless)\b", re.I),
      "I'm not the right help for what you just described. Please reach out now — "

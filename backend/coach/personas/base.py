@@ -47,3 +47,8 @@ class Persona:
 
     # --- World theming ---
     world_theme: str = "default"
+    # Number of calibration sessions before the persona transitions to active
+    # phase. 0 = no calibration phase (program starts in active phase
+    # immediately). Personas that have migrated to the calibration-first
+    # onboarding override this in their module.
+    calibration_length: int = 0

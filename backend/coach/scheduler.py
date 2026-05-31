@@ -107,16 +107,7 @@ class Scheduler:
 
 def active_users_from_store(store: Store) -> Callable[[], list[tuple[str, str]]]:
     def _query() -> list[tuple[str, str]]:
-        rows = store.conn.execute(
-            "SELECT user_id, json FROM profiles"
-        ).fetchall()
-        out: list[tuple[str, str]] = []
-        from .models import UserProfile
-        for user_id, blob in rows:
-            try:
-                p = UserProfile.model_validate_json(blob)
-                out.append((user_id, p.domain))
-            except Exception:
-                continue
-        return out
+        # Go through the store's typed API (not raw SQL) so this works on every
+        # backend — SQLite and Postgres/Supabase alike.
+        return [(p.user_id, p.domain) for p in store.all_profiles()]
     return _query

@@ -19,11 +19,11 @@ struct IntakeView: View {
     @FocusState private var identityFocused: Bool
 
     enum Step: Int, CaseIterable, Comparable {
-        case welcome, experience, daysPerWeek, injuries, equipment, baselineSquat,
+        case welcome, goal, experience, daysPerWeek, injuries, equipment, baselineSquat,
              anchor, location, identity, submitting
         static func < (lhs: Step, rhs: Step) -> Bool { lhs.rawValue < rhs.rawValue }
         var index: Int { rawValue }
-        var total: Int { 8 }  // onboarding screens, excluding welcome + submitting
+        var total: Int { 9 }  // onboarding screens, excluding welcome + submitting
     }
 
     enum SubmitState: Equatable {
@@ -34,23 +34,29 @@ struct IntakeView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if step == .welcome {
-                    WelcomeScreen(onStart: { advance() })
-                } else if step == .submitting {
-                    submittingScreen
-                } else {
-                    ScrollView {
-                        content
-                            .padding(.horizontal, 20)
-                            .padding(.top, 4)
-                            .padding(.bottom, 16)
+            ZStack {
+                AtmosphericBackground()
+
+                Group {
+                    if step == .welcome {
+                        WelcomeScreen(onStart: { advance() })
+                    } else if step == .submitting {
+                        submittingScreen
+                    } else {
+                        ScrollView {
+                            content
+                                .padding(.horizontal, 22)
+                                .padding(.top, 8)
+                                .padding(.bottom, 16)
+                        }
+                        .scrollContentBackground(.hidden)
+                        .scrollBounceBehavior(.basedOnSize)
+                        .safeAreaInset(edge: .bottom) { progressFooter }
                     }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .safeAreaInset(edge: .bottom) { progressFooter }
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 if step != .welcome && step != .submitting {
                     ToolbarItem(placement: .topBarLeading) {
@@ -58,14 +64,16 @@ struct IntakeView: View {
                             withAnimation { goBack() }
                         } label: {
                             Image(systemName: "chevron.left")
+                                .foregroundStyle(.white.opacity(0.85))
                         }
                         .disabled(step == .experience)
                     }
                     ToolbarItem(placement: .principal) {
                         Text("\(step.index) of \(step.total)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.55))
                             .monospacedDigit()
+                            .tracking(1.2)
                     }
                 }
             }
@@ -76,6 +84,7 @@ struct IntakeView: View {
     private var content: some View {
         switch step {
         case .welcome, .submitting:  EmptyView()
+        case .goal:         goalScreen
         case .experience:   experienceScreen
         case .daysPerWeek:  daysPerWeekScreen
         case .injuries:     injuriesScreen
@@ -87,6 +96,26 @@ struct IntakeView: View {
         }
     }
 
+    // MARK: - Goal screen (Q1, v2)
+
+    private var goalScreen: some View {
+        OnboardingQuestion(
+            prompt: "What do you want to do?",
+            subtitle: "Pick the one that fits best. You can change later."
+        ) {
+            VStack(spacing: 10) {
+                ForEach(GoalChoice.allCases) { g in
+                    GoalOptionRow(
+                        title: g.title,
+                        description: g.description,
+                        selected: answers.goal == g,
+                        onTap: { answers.goal = g }
+                    )
+                }
+            }
+        }
+    }
+
     // MARK: - Screens
 
     private var experienceScreen: some View {
@@ -94,7 +123,7 @@ struct IntakeView: View {
             prompt: "Your strength-training experience?",
             subtitle: "We'll use this to calibrate starting loads."
         ) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(ExperienceLevel.allCases) { e in
                     OptionRow(
                         label: e.label,
@@ -111,41 +140,48 @@ struct IntakeView: View {
             prompt: "How many days a week can you train?",
             subtitle: "Honest is better than ambitious."
         ) {
-            HStack(spacing: 20) {
-                Button { if answers.daysPerWeek > 2 { answers.daysPerWeek -= 1 } } label: {
-                    Image(systemName: "minus")
-                        .font(.title2.weight(.semibold))
-                        .frame(width: 56, height: 56)
+            HStack(spacing: 24) {
+                stepperButton(icon: "minus",
+                              enabled: answers.daysPerWeek > 2) {
+                    if answers.daysPerWeek > 2 { answers.daysPerWeek -= 1 }
                 }
-                .buttonStyle(.bordered)
-                .clipShape(Circle())
-                .disabled(answers.daysPerWeek <= 2)
 
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     Text("\(answers.daysPerWeek)")
-                        .font(.system(size: 56, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+                        .displayNumber(size: 72)
                         .contentTransition(.numericText(value: Double(answers.daysPerWeek)))
                     Text(answers.daysPerWeek == 1 ? "day per week" : "days per week")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.6))
                 }
                 .frame(minWidth: 140)
 
-                Button { if answers.daysPerWeek < 4 { answers.daysPerWeek += 1 } } label: {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.semibold))
-                        .frame(width: 56, height: 56)
+                stepperButton(icon: "plus",
+                              enabled: answers.daysPerWeek < 4) {
+                    if answers.daysPerWeek < 4 { answers.daysPerWeek += 1 }
                 }
-                .buttonStyle(.bordered)
-                .clipShape(Circle())
-                .disabled(answers.daysPerWeek >= 4)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-            .background(Color(.secondarySystemBackground),
-                        in: RoundedRectangle(cornerRadius: 16))
+            .padding(.vertical, 28)
+            .frame(maxWidth: .infinity)
+            .glassCard()
         }
+    }
+
+    private func stepperButton(icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white.opacity(enabled ? 0.92 : 0.3))
+                .frame(width: 56, height: 56)
+                .background {
+                    Circle()
+                        .fill(Color.white.opacity(0.06))
+                        .overlay { Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
+                }
+        }
+        .disabled(!enabled)
+        .buttonStyle(.plain)
     }
 
     private var injuriesScreen: some View {
@@ -153,20 +189,30 @@ struct IntakeView: View {
             prompt: "Any current pain or injuries to work around?",
             subtitle: "If something hurts, the coach holds back."
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                TextField("Describe anything to be careful with…", text: $answers.injuries, axis: .vertical)
-                    .lineLimit(3...5)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($injuriesFocused)
+            VStack(alignment: .leading, spacing: 14) {
+                AtmosphericTextField(
+                    placeholder: "Describe anything to be careful with…",
+                    text: $answers.injuries,
+                    axis: .vertical,
+                    lineLimit: 3...5
+                )
+                .focused($injuriesFocused)
                 Button {
                     answers.injuries = "none"
                     injuriesFocused = false
                 } label: {
                     Label("Nothing — I'm good", systemImage: "checkmark.circle")
-                        .font(.subheadline)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background {
+                            Capsule()
+                                .fill(Color.white.opacity(0.08))
+                                .overlay { Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1) }
+                        }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
             }
         }
     }
@@ -176,7 +222,7 @@ struct IntakeView: View {
             prompt: "What equipment do you have?",
             subtitle: "We'll build the program around what you can actually use."
         ) {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(Equipment.allCases) { e in
                     OptionRow(
                         label: e.label,
@@ -193,37 +239,41 @@ struct IntakeView: View {
             prompt: "Most you can squat for 5 reps?",
             subtitle: "Good form, not a max. Unsure is fine."
         ) {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 HStack {
                     Text("I'm not sure")
                         .font(.body)
+                        .foregroundStyle(.white)
                     Spacer()
                     Toggle("", isOn: $answers.unsure)
                         .labelsHidden()
                         .toggleStyle(.switch)
+                        .tint(Theme.ember)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color(.secondarySystemBackground),
-                            in: RoundedRectangle(cornerRadius: 12))
+                .padding(.vertical, 14)
+                .glassCard()
 
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    TextField("0", text: $answers.baselineSquatRaw)
-                        .keyboardType(.numberPad)
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 140)
-                        .focused($squatFocused)
-                        .disabled(answers.unsure)
-                        .opacity(answers.unsure ? 0.3 : 1.0)
-                    Text("lb")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                VStack(spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        TextField("", text: $answers.baselineSquatRaw,
+                                  prompt: Text("0").foregroundColor(.white.opacity(0.3)))
+                            .keyboardType(.numberPad)
+                            .font(.system(size: 56, weight: .heavy, design: .rounded))
+                            .foregroundStyle(answers.unsure ? AnyShapeStyle(Color.white.opacity(0.3))
+                                                            : AnyShapeStyle(Theme.emberGradient))
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 160)
+                            .focused($squatFocused)
+                            .disabled(answers.unsure)
+                        Text("lb")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.55))
+                    }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(Color(.secondarySystemBackground),
-                            in: RoundedRectangle(cornerRadius: 12))
+                .padding(.vertical, 28)
+                .glassCard()
                 .opacity(answers.unsure ? 0.5 : 1.0)
             }
         }
@@ -234,15 +284,17 @@ struct IntakeView: View {
             prompt: "Pick something you do every single day.",
             subtitle: "We'll stack training right after it — morning coffee, school drop-off, end-of-workday shutdown."
         ) {
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("e.g. after my morning coffee",
-                          text: $answers.anchorHabit, axis: .vertical)
-                    .lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($anchorFocused)
+            VStack(alignment: .leading, spacing: 10) {
+                AtmosphericTextField(
+                    placeholder: "e.g. after my morning coffee",
+                    text: $answers.anchorHabit,
+                    axis: .vertical,
+                    lineLimit: 1...3
+                )
+                .focused($anchorFocused)
                 Text("Habit stacking: 'right after X, I will train' is much harder to forget than 'I'll train sometime today'.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -253,15 +305,17 @@ struct IntakeView: View {
             prompt: "Where will the training happen?",
             subtitle: "Naming the place makes the moment harder to dodge."
         ) {
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("e.g. the garage, the gym on Main St., the living room",
-                          text: $answers.trainingLocation, axis: .vertical)
-                    .lineLimit(1...3)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($locationFocused)
+            VStack(alignment: .leading, spacing: 10) {
+                AtmosphericTextField(
+                    placeholder: "e.g. the garage, the gym on Main St., the living room",
+                    text: $answers.trainingLocation,
+                    axis: .vertical,
+                    lineLimit: 1...3
+                )
+                .focused($locationFocused)
                 Text("Implementation intention: when CUE, I will TRAIN at LOCATION. All three together; not just one.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -272,31 +326,50 @@ struct IntakeView: View {
             prompt: "Who are you becoming?",
             subtitle: "One sentence. This becomes your summit."
         ) {
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("e.g. someone who shows up, even when tired",
-                          text: $identityStatement, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($identityFocused)
+            VStack(alignment: .leading, spacing: 10) {
+                AtmosphericTextField(
+                    placeholder: "e.g. someone who shows up, even when tired",
+                    text: $identityStatement,
+                    axis: .vertical,
+                    lineLimit: 2...4,
+                    font: .system(.title3, design: .serif)
+                )
+                .focused($identityFocused)
                 Text("The coach measures progress against this, not pounds lifted.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     private var submittingScreen: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             switch submitState {
             case .idle, .loading:
-                ProgressView()
-                    .controlSize(.large)
-                Text("Building your program…")
-                    .font(.headline)
-                Text("This usually takes a second.")
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.08), lineWidth: 4)
+                        .frame(width: 84, height: 84)
+                    Circle()
+                        .trim(from: 0, to: 0.3)
+                        .stroke(Theme.emberGradient,
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 84, height: 84)
+                        .rotationEffect(.degrees(rotating ? 360 : 0))
+                        .animation(.linear(duration: 1.2).repeatForever(autoreverses: false),
+                                   value: rotating)
+                    Image(systemName: "mountain.2.fill")
+                        .font(.title2)
+                        .foregroundStyle(Theme.emberGradient)
+                }
+                .onAppear { rotating = true }
+                Text("Putting your program together")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("One minute.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.55))
             case .failed(let msg):
                 ErrorView(
                     title: "Couldn't build your program",
@@ -308,27 +381,49 @@ struct IntakeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    @State private var rotating = false
+
     private var progressFooter: some View {
-        VStack(spacing: 10) {
-            ProgressView(value: Double(step.index), total: Double(step.total))
-                .tint(.accentColor)
-                .frame(maxWidth: .infinity)
+        VStack(spacing: 12) {
+            // Custom progress bar — thin gradient fill on a translucent track.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(Theme.emberGradient)
+                        .frame(width: max(8, geo.size.width * progress))
+                        .shadow(color: Theme.ember.opacity(0.6), radius: 4)
+                }
+            }
+            .frame(height: 5)
+            .animation(.spring(response: 0.5, dampingFraction: 0.85), value: progress)
+
             Button {
                 Task { await onContinue() }
             } label: {
                 Text(continueLabel)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(EmberButtonStyle())
             .disabled(!canContinue)
+            .opacity(canContinue ? 1.0 : 0.45)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-        .background(.bar)
+        .padding(.horizontal, 22)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background {
+            // Subtle gradient hide so the footer doesn't sit hard against the bg.
+            LinearGradient(
+                colors: [.clear, Theme.coal.opacity(0.85), Theme.coal],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var progress: Double {
+        Double(step.index) / Double(step.total)
     }
 
     private var continueLabel: String {
@@ -337,7 +432,7 @@ struct IntakeView: View {
 
     private var canContinue: Bool {
         switch step {
-        case .experience, .daysPerWeek, .equipment: return true
+        case .goal, .experience, .daysPerWeek, .equipment: return true
         case .injuries:      return !answers.injuries.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .baselineSquat: return answers.unsure || !answers.baselineSquatRaw.isEmpty
         case .anchor:        return !answers.anchorHabit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -402,24 +497,46 @@ private struct OptionRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(selected ? Color.clear : Color.white.opacity(0.2),
+                                lineWidth: 1.5)
+                        .frame(width: 24, height: 24)
+                    if selected {
+                        Circle()
+                            .fill(Theme.emberGradient)
+                            .frame(width: 24, height: 24)
+                            .shadow(color: Theme.ember.opacity(0.6), radius: 8)
+                        Image(systemName: "checkmark")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.black)
+                    }
+                }
                 Text(label)
-                    .font(.body)
-                    .foregroundStyle(.primary)
+                    .font(.body.weight(selected ? .semibold : .regular))
+                    .foregroundStyle(.white)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(selected ? Color.accentColor : Color(.tertiaryLabel))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.secondarySystemBackground))
-            )
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(selected ? Theme.ember.opacity(0.10) : Color.white.opacity(0.02))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(selected ? Theme.ember.opacity(0.5)
+                                                   : Color.white.opacity(0.08),
+                                          lineWidth: 1)
+                    }
+            }
         }
         .buttonStyle(.plain)
     }
@@ -431,64 +548,110 @@ private struct OnboardingQuestion<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(prompt)
-                .font(.title2.bold())
+                .font(.system(.title, design: .serif, weight: .bold))
+                .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             content()
-                .padding(.top, 20)
+                .padding(.top, 24)
         }
+    }
+}
+
+private struct AtmosphericTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var axis: Axis = .horizontal
+    var lineLimit: ClosedRange<Int> = 1...1
+    var font: Font = .body
+
+    var body: some View {
+        TextField(placeholder, text: $text, axis: axis)
+            .lineLimit(lineLimit)
+            .font(font)
+            .foregroundStyle(.white)
+            .tint(Theme.ember)
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+            }
     }
 }
 
 private struct WelcomeScreen: View {
     let onStart: () -> Void
+    @State private var glow = false
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
-            Image(systemName: "mountain.2.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(.tint)
-                .padding(.bottom, 24)
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Theme.ember.opacity(0.5), .clear],
+                        center: .center,
+                        startRadius: 4,
+                        endRadius: 140))
+                    .frame(width: 280, height: 280)
+                    .scaleEffect(glow ? 1.05 : 0.95)
+                    .animation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true), value: glow)
+
+                Image(systemName: "mountain.2.fill")
+                    .font(.system(size: 96, weight: .black))
+                    .foregroundStyle(Theme.emberGradient)
+                    .shadow(color: Theme.ember.opacity(0.65), radius: 24)
+                    .shadow(color: Theme.gold.opacity(0.4), radius: 8)
+            }
+            .padding(.bottom, 32)
+
             Text("The Coach")
-                .font(.largeTitle.bold())
-                .padding(.bottom, 8)
+                .font(.system(size: 48, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.bottom, 14)
+
             Text("A copilot that pushes when it matters\nand stays out of the way when it doesn't.")
                 .font(.body)
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
+
             Spacer()
+
             Button(action: onStart) {
                 Text("Get started")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .padding(.bottom, 8)
+            .buttonStyle(EmberButtonStyle())
+            .padding(.bottom, 10)
+
             Text("A few quick questions — about a minute.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.45))
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 32)
+        .onAppear { glow = true }
     }
 }
 
 // MARK: - Structured answers
 
 private struct StructuredAnswers {
+    var goal: GoalChoice = .getStronger
     var experience: ExperienceLevel = .novice
     var daysPerWeek: Int = 3
     var injuries: String = ""
@@ -500,6 +663,7 @@ private struct StructuredAnswers {
 
     func toBackendDict() -> [String: String] {
         [
+            "goal": goal.backendValue,
             "experience": experience.backendValue,
             "days_per_week": String(daysPerWeek),
             "injuries": injuries.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -508,6 +672,105 @@ private struct StructuredAnswers {
             "anchor_habit": anchorHabit.trimmingCharacters(in: .whitespacesAndNewlines),
             "training_location": trainingLocation.trimmingCharacters(in: .whitespacesAndNewlines),
         ]
+    }
+}
+
+// MARK: - Goal choice (v2 Q1)
+
+/// Five goal templates the user picks from. Drives downstream programming
+/// (only `getStronger` is wired to a real template today; others store the
+/// choice for future routing — see design/v2/templates/).
+enum GoalChoice: String, CaseIterable, Identifiable {
+    case buildMuscle, getStronger, loseWeight, ageWell, discipline
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .buildMuscle:  return "Build muscle"
+        case .getStronger:  return "Get stronger"
+        case .loseWeight:   return "Lose weight, get fit"
+        case .ageWell:      return "Stay fit, age well"
+        case .discipline:   return "75-Hard-style discipline"
+        }
+    }
+    var description: String {
+        switch self {
+        case .buildMuscle:  return "Look bigger. Fill out a t-shirt."
+        case .getStronger:  return "Move more weight."
+        case .loseWeight:   return "Drop fat, feel better."
+        case .ageWell:      return "Maintain. Don't get injured."
+        case .discipline:   return "Strict, daily, photos."
+        }
+    }
+    /// Lowercase snake-case for backend storage.
+    var backendValue: String {
+        switch self {
+        case .buildMuscle:  return "build_muscle"
+        case .getStronger:  return "get_stronger"
+        case .loseWeight:   return "lose_weight"
+        case .ageWell:      return "age_well"
+        case .discipline:   return "discipline"
+        }
+    }
+}
+
+// MARK: - Goal option row (taller than OptionRow — has a description line)
+
+private struct GoalOptionRow: View {
+    let title: String
+    let description: String
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(selected ? Color.clear : Color.white.opacity(0.2),
+                                lineWidth: 1.5)
+                        .frame(width: 24, height: 24)
+                    if selected {
+                        Circle()
+                            .fill(Theme.emberGradient)
+                            .frame(width: 24, height: 24)
+                            .shadow(color: Theme.ember.opacity(0.6), radius: 8)
+                        Image(systemName: "checkmark")
+                            .font(.caption2.weight(.heavy))
+                            .foregroundStyle(.black)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.body.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.leading)
+                    Text(description)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(selected ? Theme.ember.opacity(0.10) : Color.white.opacity(0.02))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(selected ? Theme.ember.opacity(0.5)
+                                                   : Color.white.opacity(0.08),
+                                          lineWidth: 1)
+                    }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

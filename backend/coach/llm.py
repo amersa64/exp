@@ -22,10 +22,15 @@ rest of the system can be exercised end-to-end.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+from .llm_config import model_for
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,7 +50,16 @@ class _Provider(Protocol):
     name: str          # "anthropic" | "openai"
     model: str
 
-    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str: ...
+    def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        *,
+        json_mode: bool,
+        model: str | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> str: ...
 
 
 class _AnthropicProvider:
@@ -59,12 +73,21 @@ class _AnthropicProvider:
         self._sdk = anthropic.Anthropic()
         self.model = model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        *,
+        json_mode: bool,
+        model: str | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> str:
         # Anthropic doesn't have a native JSON response_format yet; the
         # caller has already appended a "respond with JSON only" sentence
         # to the system prompt. That contract is enough in practice.
         msg = self._sdk.messages.create(
-            model=self.model,
+            model=model or self.model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
@@ -88,20 +111,53 @@ class _OpenAIProvider:
         self._sdk = openai.OpenAI()
         self.model = model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int, *, json_mode: bool) -> str:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int,
+        *,
+        json_mode: bool,
+        model: str | None = None,
+        json_schema: dict[str, Any] | None = None,
+    ) -> str:
         kwargs: dict[str, Any] = {
-            "model": self.model,
+            "model": model or self.model,
             "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user},
             ],
         }
-        if json_mode:
+        if json_schema is not None:
+            # Strict structured output — the strongest guarantee OpenAI offers.
+            # Caller is responsible for a schema that satisfies strict mode:
+            # additionalProperties:false on every object, every property in
+            # required. Decode-time constrained — model literally cannot
+            # produce non-conforming JSON.
+            kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            }
+        elif json_mode:
+            # Weaker — only guarantees valid JSON syntax, not schema fit.
             # OpenAI requires that the prompt mention "json" when this is
             # set — the LLMClient.complete_json wrapper guarantees that.
             kwargs["response_format"] = {"type": "json_object"}
         resp = self._sdk.chat.completions.create(**kwargs)
+        # Log token usage so callers can estimate cost. Cheap to read off
+        # every response, useful for catching regressions in prompt size.
+        usage = getattr(resp, "usage", None)
+        if usage is not None:
+            logger.info(
+                "llm.usage model=%s prompt_tokens=%d completion_tokens=%d total=%d",
+                kwargs["model"], usage.prompt_tokens,
+                usage.completion_tokens, usage.total_tokens,
+            )
         return resp.choices[0].message.content or ""
 
 
@@ -178,19 +234,42 @@ class LLMClient:
     def provider_name(self) -> str:
         return self._provider.name if self._provider else "stub"
 
-    def complete(self, system: str, user: str, max_tokens: int = 600) -> LLMResponse:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 600,
+        *,
+        task: str | None = None,
+    ) -> LLMResponse:
+        model = model_for(task)
         if self._provider is None:
+            logger.warning("llm.stub_fallback reason=no_provider task=%s", task)
             return LLMResponse(text=_stub_completion(system, user), used_stub=True)
         try:
-            text = self._provider.complete(system, user, max_tokens, json_mode=False)
+            text = self._provider.complete(
+                system, user, max_tokens, json_mode=False, model=model,
+            )
             return LLMResponse(text=text, used_stub=False)
-        except Exception:
+        except Exception as e:
             # Any provider failure (rate limit, auth, network) silently
             # degrades to the stub — the coaching loop never stalls because
-            # the LLM hiccupped.
+            # the LLM hiccupped. We log because silent degradation is the
+            # nightmare scenario for an AI-driven coach.
+            logger.warning(
+                "llm.stub_fallback reason=provider_error task=%s err=%s",
+                task, type(e).__name__,
+            )
             return LLMResponse(text=_stub_completion(system, user), used_stub=True)
 
-    def complete_json(self, system: str, user: str, max_tokens: int = 800) -> dict[str, Any]:
+    def complete_json(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int = 800,
+        *,
+        task: str | None = None,
+    ) -> dict[str, Any]:
         """
         Ask for a JSON object. Falls back to stub on any parse failure.
 
@@ -201,18 +280,77 @@ class LLMClient:
         """
         contract = "\n\nRespond ONLY with a single JSON object. No prose, no markdown."
         full_system = system + contract
+        model = model_for(task)
         if self._provider is None:
+            logger.warning("llm.stub_fallback reason=no_provider task=%s", task)
             return json.loads(_stub_completion(system, user))
         try:
             text = self._provider.complete(
-                full_system, user, max_tokens, json_mode=True
+                full_system, user, max_tokens, json_mode=True, model=model,
             ).strip()
             if text.startswith("```"):
                 text = text.strip("`")
                 if text.lower().startswith("json"):
                     text = text[4:].strip()
             return json.loads(text)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "llm.stub_fallback reason=provider_error task=%s err=%s",
+                task, type(e).__name__,
+            )
+            return json.loads(_stub_completion(system, user))
+
+    def complete_with_schema(
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        max_tokens: int = 2000,
+        *,
+        task: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Strict structured output — decode-time constrained to `schema`.
+
+        Today this only takes effect on OpenAI providers (json_schema mode).
+        Anthropic falls through to JSON-mode with the schema appended as a
+        contract sentence. Stub falls through to JSON parse of the stub
+        text. In all cases the return is a dict, never raises on the happy
+        path — but the *strict guarantee* is OpenAI-only.
+
+        Schema requirements (OpenAI strict mode):
+          - additionalProperties:false on every object
+          - every property in the required list
+          - enum values fit OpenAI's caps (≤1000 enum values total)
+        """
+        contract = (
+            "\n\nRespond ONLY with a single JSON object matching the provided schema. "
+            "No prose, no markdown."
+        )
+        full_system = system + contract
+        model = model_for(task)
+        if self._provider is None:
+            logger.warning("llm.stub_fallback reason=no_provider task=%s", task)
+            return json.loads(_stub_completion(system, user))
+        try:
+            text = self._provider.complete(
+                full_system,
+                user,
+                max_tokens,
+                json_mode=True,
+                model=model,
+                json_schema=schema if self._provider.name == "openai" else None,
+            ).strip()
+            if text.startswith("```"):
+                text = text.strip("`")
+                if text.lower().startswith("json"):
+                    text = text[4:].strip()
+            return json.loads(text)
+        except Exception as e:
+            logger.warning(
+                "llm.stub_fallback reason=provider_error task=%s err=%s",
+                task, type(e).__name__,
+            )
             return json.loads(_stub_completion(system, user))
 
 

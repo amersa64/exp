@@ -9,8 +9,6 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 7QF5D7PJL5
     SWIFT_VERSION: 5.0
-    TARGETED_DEVICE_FAMILY: "1,2"
-    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
 targets:
   TheCoach:
     type: application
@@ -21,9 +19,24 @@ targets:
       path: TheCoach/Info.plist
       properties:
         CFBundleDisplayName: The Coach
-        CoachBackendURL: http://127.0.0.1:8765
-        NSHealthShareUsageDescription: Read workout data to verify completed sessions and time nudges.
+        CoachBackendURL: https://the-coach-brain.fly.dev
+        # Bearer token for the hardened backend. Substituted from the
+        # COACH_API_TOKEN env var at `xcodegen generate` time (deploy.sh exports
+        # it from .env) so the secret never lands in source. Left as the literal
+        # ${...} when unset — CoachAPI treats that as "no token" (open backend).
+        CoachAPIToken: ${COACH_API_TOKEN}
+        NSHealthShareUsageDescription: Read your sleep, heart rate, HRV, and workouts so the coach can gauge your recovery and auto-log finished sessions.
         NSHealthUpdateUsageDescription: Not used.
+        NSLocationWhenInUseUsageDescription: Learn where you train so the coach can have your session ready the moment you arrive at the gym.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Notice when you arrive at or leave the gym so the coach can prep your session and remind you to log it — even in the background.
+        UIBackgroundModes:
+          - location
+          - remote-notification
+          - fetch
+        # Background-refresh task id — must match kRefreshTaskID in TheCoachApp.swift.
+        # BGTaskScheduler.register crashes at launch if the id isn't listed here.
+        BGTaskSchedulerPermittedIdentifiers:
+          - ai.zaimler.TheCoach.refresh
         UILaunchScreen: {}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -31,7 +44,24 @@ targets:
             127.0.0.1:
               NSExceptionAllowsInsecureHTTPLoads: true
               NSIncludesSubdomains: false
+    entitlements:
+      path: TheCoach/TheCoach.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        # PUSH NOTIFICATIONS — disabled. The aps-environment entitlement
+        # requires a PAID Apple Developer Program account; free/personal teams
+        # can't sign it. To enable push once you're enrolled, uncomment the line
+        # below (use `production` for TestFlight/App Store + set APNS_SANDBOX=false):
+        #   aps-environment: development
+        # The push code (token registration, APNs delivery) is already wired and
+        # waiting — only this entitlement + the APNS_* backend secrets are needed.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.zaimler.TheCoach
         GENERATE_INFOPLIST_FILE: NO
+        # iPhone-only, portrait coaching app. Set at the TARGET level so it
+        # overrides xcodegen's default "1,2"; this is what clears the iPad
+        # "all interface orientations must be supported" warning on iOS 26
+        # (where UIRequiresFullScreen is deprecated/ignored).
+        TARGETED_DEVICE_FAMILY: "1"

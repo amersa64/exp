@@ -1,0 +1,40 @@
+# Fly.io deploy config for the stateless brain. State is in Supabase, so the
+# machine can scale to zero between requests — cheap/free. Incoming requests
+# (iOS app) and the pg_cron heartbeat both wake it.
+#
+# First-time setup (from this dir):
+#   fly launch --no-deploy --copy-config --name the-coach-brain   # or `fly apps create`
+#   fly secrets set SUPABASE_DB_URL="postgresql://..." \
+#                   COACH_API_TOKEN="<token from .env>" \
+#                   OPENAI_API_KEY="sk-..." \
+#                   COACH_LLM_PROVIDER="openai" COACH_LLM_MODEL="gpt-5"
+#   fly deploy
+# See DEPLOY-CLOUD.md for the full runbook.
+
+app = "the-coach-brain"          # rename to your chosen app name
+primary_region = "iad"           # us-east, close to Supabase us-east-2
+
+[build]
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero when idle; wake on request. State is external (Supabase), so
+  # stopping the machine loses nothing.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"            # public (no token) by design — see _auth_gate
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

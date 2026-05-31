@@ -1,0 +1,29 @@
+# Keep the image small and secret-free. Only pyproject.toml + backend/ are
+# needed (see Dockerfile). Everything below is dev-only, secret, or unrelated.
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets + local state — MUST NOT enter the image. Set these as platform
+# secrets at runtime instead.
+.env
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Not part of the server.
+ios/
+design/
+cli/
+.git/
+build/
+dist/
+*.egg-info/
+.DS_Store
+DEPLOY*.md
+HANDOFF.md
+README.md
+deploy.sh

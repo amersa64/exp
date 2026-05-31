@@ -59,7 +59,7 @@ def test_anthropic_key_selects_anthropic(clean_env, monkeypatch):
     class _Fake:
         name = "anthropic"
         model = "claude-fake"
-        def complete(self, system, user, max_tokens, *, json_mode): return "ok"
+        def complete(self, system, user, max_tokens, *, json_mode, model=None, json_schema=None): return "ok"
 
     monkeypatch.setattr(llm_mod, "_safe_init", lambda cls, model: _Fake())
     c = LLMClient()
@@ -73,7 +73,7 @@ def test_openai_key_selects_openai(clean_env, monkeypatch):
     class _Fake:
         name = "openai"
         model = "gpt-fake"
-        def complete(self, system, user, max_tokens, *, json_mode): return "ok"
+        def complete(self, system, user, max_tokens, *, json_mode, model=None, json_schema=None): return "ok"
 
     monkeypatch.setattr(llm_mod, "_safe_init", lambda cls, model: _Fake())
     c = LLMClient()

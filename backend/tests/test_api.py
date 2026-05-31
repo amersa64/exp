@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from tests.conftest import session_log_body
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -63,7 +65,12 @@ def test_full_flow(client):
     assert r.status_code == 200
     body = r.json()
     assert body["ripples"]
-    assert "completed" in body["adaptation"].lower() or "squat" in body["adaptation"].lower()
+    # Strength now starts in CALIBRATION phase; the first session is
+    # Calibration 1 of 5. The adapt narrative for a calibration log talks
+    # about "calibration" rather than the load deltas of a finished active
+    # session. World growth still happens (a "done" report is a verified event).
+    adaptation = body["adaptation"].lower()
+    assert "calibration" in adaptation or "completed" in adaptation
 
     # 6. World reflects growth
     r = client.get("/world", headers=headers)
@@ -88,7 +95,7 @@ def test_identity_and_milestones_after_program(client):
     assert r.status_code == 200
     body = r.json()
     assert body["statement"] == "I am someone who shows up"
-    assert body["domain"] == "fitness"
+    assert body["domain"] == "strength"  # v2: default goal-less intake routes to strength
     assert body["user_id"] == "carol"
 
     r = client.get("/milestones", headers=headers)
@@ -120,7 +127,7 @@ def test_session_endpoints_close_the_loop_without_apns(client):
 
     action_id = body["action_id"]
     r = client.post(f"/session/{action_id}/log",
-                    json={"outcome": "done"}, headers=headers)
+                    json=session_log_body(body, "done"), headers=headers)
     assert r.status_code == 200
     assert r.json()["ripples"], "completing a session must grow the world"
 
@@ -133,8 +140,14 @@ def test_session_log_unknown_action(client):
         "answers": {"experience": "novice", "days_per_week": "3", "injuries": "none"},
         "identity_statement": "consistent",
     }, headers=headers)
-    r = client.post("/session/does-not-exist/log",
-                    json={"outcome": "done"}, headers=headers)
+    # Body shape must be valid (per-exercise dict) — we want to exercise the
+    # 404 unknown-action path, not pydantic's 422. A single fake exercise
+    # entry is enough; the action_id lookup fails first.
+    r = client.post(
+        "/session/does-not-exist/log",
+        json={"exercises": {"Back Squat": {"outcome": "done"}}},
+        headers=headers,
+    )
     assert r.status_code == 404
 
 
@@ -145,3 +158,44 @@ def test_safety_handoff_via_api(client):
     }, headers=headers)
     assert r.status_code == 200
     assert r.json()["handoff"] is not None
+
+
+def test_exercise_swap_chosen_skips_llm(client):
+    """A default-pick swap (explicit `chosen`) applies + remembers without
+    invoking the LLM picker — the decision is already made client-side."""
+    headers = {"X-User-Id": "carol"}
+    client.post("/intake/submit", json={
+        "answers": {"experience": "novice", "days_per_week": "3", "injuries": "none",
+                    "equipment": "full gym"},
+        "identity_statement": "strong",
+    }, headers=headers)
+    # Pick a real catalog exercise to swap and a real alternate to swap to.
+    alts = client.get("/exercises/alternates", params={"name": "Barbell Squat"},
+                      headers=headers)
+    assert alts.status_code == 200
+    candidates = alts.json()["alternates"]
+    if not candidates:
+        pytest.skip("no equipment-matched alternates for the seed exercise")
+    chosen = candidates[0]["name"]
+
+    r = client.post("/exercise/swap", json={
+        "exercise_name": "Barbell Squat", "chosen": chosen,
+    }, headers=headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["replacement"] == chosen
+    # The swap is remembered as a standing constraint (coach memory).
+    adj = client.get("/adjustments", headers=headers).json()["adjustments"]
+    assert any(a["replacement_exercise"] == chosen for a in adj)
+
+
+def test_exercise_swap_chosen_unknown_404(client):
+    headers = {"X-User-Id": "dave"}
+    client.post("/intake/submit", json={
+        "answers": {"experience": "novice", "days_per_week": "3"},
+        "identity_statement": "strong",
+    }, headers=headers)
+    r = client.post("/exercise/swap", json={
+        "exercise_name": "Barbell Squat", "chosen": "Not A Real Exercise",
+    }, headers=headers)
+    assert r.status_code == 404

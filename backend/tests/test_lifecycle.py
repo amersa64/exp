@@ -133,11 +133,39 @@ def test_engine_backs_off_after_ignored(coach):
 
 # ---- Rubric B3 — adaptation, not plan-generation ----------------------------
 
+def _force_active_phase(store, user_id: str, starting_squat: int = 135) -> int:
+    """
+    Helper for tests that target ACTIVE-PHASE adaptation logic.
+
+    The strength persona's build_program now lands in CALIBRATION (week 1 of
+    structured assessment). Tests that want to exercise the
+    "done report → load advances" rule shouldn't have to walk through five
+    calibration sessions — that's a different test. This helper flips the
+    program to active phase with sensible starting loads so the unit test
+    can focus on its one assertion.
+    """
+    program = store.get_program(user_id)
+    assert program is not None
+    program.phase = "active"
+    program.progression.update({
+        "squat_lb": starting_squat,
+        "bench_lb": 95,
+        "deadlift_lb": 185,
+        "row_lb": 95,
+        "ohp_lb": 65,
+        "ab_toggle": 0,
+        "consecutive_easy_sessions": 0,
+        "consecutive_failed_sessions": 0,
+    })
+    store.save_program(program)
+    return starting_squat
+
+
 def test_program_adapts_to_done_report(coach):
     c, store, cal, _ = coach
     c.record_intake({"experience": "novice", "days_per_week": "3"})
-    _, _, _, program = c.build_program("strong + energetic")
-    starting_squat = program.progression["squat_lb"]
+    c.build_program("strong + energetic")
+    starting_squat = _force_active_phase(store, "u1", starting_squat=135)
     cal.seed("u1", [])
     n = c.try_nudge(now=_utc(2026, 5, 25))
     assert n is not None
@@ -153,9 +181,9 @@ def test_program_adapts_to_done_report(coach):
 def test_program_deloads_after_two_partials(coach):
     c, store, cal, _ = coach
     c.record_intake({"experience": "novice", "days_per_week": "3"})
-    _, _, _, program = c.build_program("strong + energetic")
+    c.build_program("strong + energetic")
+    start_load = _force_active_phase(store, "u1", starting_squat=135)
     cal.seed("u1", [])
-    start_load = program.progression["squat_lb"]
     for _ in range(2):
         n = c.try_nudge(now=_utc(2026, 5, 25) + timedelta(days=_*2))
         if n is None:
@@ -166,6 +194,42 @@ def test_program_deloads_after_two_partials(coach):
         c.adapt()
     new_load = store.get_program("u1").progression["squat_lb"]
     assert new_load < start_load, "two partials in a row must trigger a deload"
+
+
+def test_calibration_top_sets_flow_into_results(coach):
+    """
+    Calibration logs carry structured top_sets keyed by lift slot. The
+    persona must persist them into program.calibration_results with an
+    estimated 1RM + percentile via the benchmark engine.
+    """
+    c, store, cal, _ = coach
+    c.record_intake({
+        "goal": "get_stronger",
+        "sex": "male",
+        "age": "32",
+        "bodyweight_lb": "180",
+        "experience": "novice",
+        "days_per_week": "3",
+        "equipment": "full gym",
+    })
+    c.build_program("strong + energetic")
+    program = store.get_program("u1")
+    assert program.phase == "calibration", "new strength programs start in calibration"
+    cal.seed("u1", [])
+    n = c.try_nudge(now=_utc(2026, 5, 25))
+    assert n is not None
+    c.record_report(
+        n.id, NudgeOutcome.DONE,
+        friction_note=None,
+        top_sets={"squat": {"reps": 5, "load_lb": 185.0}},
+    )
+    c.adapt()
+    program = store.get_program("u1")
+    assert "squat" in program.calibration_results
+    res = program.calibration_results["squat"]
+    assert res["est_1rm_lb"] > 185, "Epley estimate must exceed the logged 5RM load"
+    assert res["label"] in ("untrained", "novice", "intermediate", "advanced")
+    assert program.calibration_index == 1, "calibration index advances after a done log"
 
 
 # ---- Rubric A4 — loop closing -----------------------------------------------

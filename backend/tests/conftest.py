@@ -37,3 +37,24 @@ def _scrub_llm_env(monkeypatch):
     for var in _LLM_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     yield
+
+
+def session_log_body(next_session: dict, outcome: str = "done") -> dict:
+    """
+    Build a `/session/{id}/log` body from the response of `/session/next`.
+
+    The endpoint takes per-exercise logs now (Section 5: each exercise is the
+    atomic action); tests that just want to assert "the user finished" build
+    the body by stamping the same outcome on every prescribed exercise. The
+    server rolls up to a session-level outcome from there.
+
+    Use `outcome="skipped"` to log a zero-rep session, or pass a NextSession
+    response with no exercises and call this with `outcome="done"` to send
+    the legitimate empty case the API accepts (rolls up to SKIPPED).
+    """
+    return {
+        "exercises": {
+            ex["name"]: {"outcome": outcome}
+            for ex in next_session.get("session", {}).get("exercises", [])
+        }
+    }

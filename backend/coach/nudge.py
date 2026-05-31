@@ -98,6 +98,12 @@ class NudgeEngine:
         JITAI decision (Section 3.3): is the user reachable AND receptive AND
         does an opportunity window exist?
         """
+        # 0) Pause (v2): the user explicitly asked for silence. Respect it
+        #    absolutely — pause means pause, the coach doesn't lecture.
+        program = self.store.get_program(user_id)
+        if program and program.paused_until is not None and now < program.paused_until:
+            return TimingDecision(False, "program paused — coach is silent until resume")
+
         # 1) Restraint: have we already fired enough today?
         todays = [
             n for n in self.store.recent_nudges(user_id, limit=20)
@@ -158,6 +164,14 @@ class NudgeEngine:
                 shape = "minimum"
             if s.kind == "workout":  # already trained recently
                 shape = "minimum"
+
+        # Readiness Engine (Feature 1): if this morning's HealthKit recovery
+        # score put the user in a rest/easy band, ask for the minimum dose
+        # regardless of the calendar — the body's signal overrides the plan.
+        readiness = self.store.get_readiness(user_id)
+        if readiness is not None and readiness.band in ("rest", "easy"):
+            shape = "minimum"
+            sig_summary = f"readiness={readiness.score}({readiness.band}); " + sig_summary
 
         # 6) Fire — at the *opportunity*, not "right now blindly".
         fire_at = max(now, slot.start - timedelta(minutes=15))
@@ -257,7 +271,7 @@ class NudgeEngine:
                 f"variety_seed: {random.randint(0, 10_000)}"
             )
             try:
-                return self.llm.complete_json(system, user_msg, max_tokens=400)
+                return self.llm.complete_json(system, user_msg, max_tokens=400, task="NUDGE")
             except Exception:
                 if shape == "minimum" and action.minimum_dose:
                     fallback_body = (

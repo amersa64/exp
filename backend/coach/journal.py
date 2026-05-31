@@ -97,7 +97,7 @@ class CoachJournalAuthor:
             f"event_details:\n{event_block}"
         )
         try:
-            raw = self.llm.complete_json(system, user_msg, max_tokens=300)
+            raw = self.llm.complete_json(system, user_msg, max_tokens=300, task="JOURNAL")
         except Exception:
             raw = {"text": f"{kind} event recorded.", "surface": False, "reason_for_surface": None}
 

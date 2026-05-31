@@ -164,6 +164,58 @@ class ExerciseCatalog:
                 return ex
         raise ValueError(f"No catalog entry matched any of: {candidates}")
 
+    def alternates_for(
+        self,
+        exercise: Exercise,
+        available_equipment: set[str | None],
+        limit: int = 3,
+    ) -> list[Exercise]:
+        """
+        Find true alternates — same movement pattern, same primary muscle group,
+        equipment the user has, excluding the original.
+
+        Rules (per design feedback — "don't swap upper chest for lower chest"):
+          - Same primary_muscle as the original.
+          - Same category (strength → strength, cardio → cardio).
+          - Same mechanic (compound → compound, isolation → isolation).
+          - User's available equipment only.
+          - Skip the original.
+          - Prefer beginner level when the original is beginner-only.
+
+        Returns up to `limit` exercises, ordered roughly by closeness to the
+        original (same level first, then any level).
+        """
+        if not exercise.primary_muscles:
+            return []
+        primary = exercise.primary_muscles[0]
+
+        # Same-level first, then any-level.
+        same_level = self.find(
+            primary_muscle=primary,
+            level=exercise.level,
+            equipment=available_equipment,
+            category=exercise.category,
+            mechanic=exercise.mechanic,
+        )
+        any_level = self.find(
+            primary_muscle=primary,
+            equipment=available_equipment,
+            category=exercise.category,
+            mechanic=exercise.mechanic,
+        )
+
+        seen = {exercise.name.lower()}
+        result: list[Exercise] = []
+        for candidate in same_level + any_level:
+            key = candidate.name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(candidate)
+            if len(result) >= limit:
+                break
+        return result
+
     def regression_for(
         self,
         exercise: Exercise,

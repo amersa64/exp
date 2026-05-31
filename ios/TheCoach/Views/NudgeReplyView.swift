@@ -23,93 +23,153 @@ struct NudgeReplyView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Picker("Outcome", selection: $outcome) {
-                        Text("Done").tag(NudgeOutcome.done)
-                        Text("Partial").tag(NudgeOutcome.partial)
-                        Text("Not now").tag(NudgeOutcome.not_now)
-                        Text("Busy").tag(NudgeOutcome.busy)
-                        Text("Skipped").tag(NudgeOutcome.skipped)
+            ZStack {
+                AtmosphericBackground()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        outcomeCard
+                        frictionCard
+                        resultCards
+                        sendButton
                     }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text("How did it go?")
-                } footer: {
-                    Text(footerForOutcome)
+                    .padding(18)
                 }
-
-                Section {
-                    TextField("What got in the way? (optional)",
-                              text: $friction, axis: .vertical)
-                        .lineLimit(2...5)
-                } header: {
-                    Text("Friction note")
-                } footer: {
-                    Text("Feeds adaptation. Specific beats polite — 'kids meltdown at 6pm' is more useful than 'busy'.")
-                }
-
-                if case .sent(let ripples, let adaptation, let coachResponse) = result {
-                    // The coach's own words first — this is the moment the
-                    // app stops feeling like a tracker. Distinct treatment
-                    // from the world-ripples so it reads as someone speaking.
-                    if let cr = coachResponse, !cr.isEmpty {
-                        Section {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: "person.fill.questionmark")
-                                    .foregroundStyle(.tint)
-                                    .imageScale(.large)
-                                Text(cr)
-                                    .font(.callout)
-                                    .foregroundStyle(.primary)
-                            }
-                            .padding(.vertical, 4)
-                        } header: {
-                            Text("From your coach")
-                        }
-                    }
-                    Section {
-                        ForEach(ripples, id: \.self) { ripple in
-                            Label(ripple, systemImage: "sparkles")
-                                .foregroundStyle(.primary)
-                        }
-                        if let a = adaptation, !a.isEmpty {
-                            Text(a).font(.footnote).foregroundStyle(.secondary)
-                        }
-                    } header: {
-                        Text("Reflected in your world")
-                    }
-                }
-
-                if case .failed(let msg) = result {
-                    Section {
-                        Text(msg).foregroundStyle(.red)
-                    }
-                }
-
-                Section {
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        HStack {
-                            if sending { ProgressView() }
-                            Text(sending ? "Sending…" : "Send")
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .disabled(sending || result != nil)
-                }
+                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Quick reply")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(result == nil ? "Cancel" : "Done") { dismiss() }
+                        .foregroundStyle(.white.opacity(0.85))
                 }
             }
         }
         .onAppear { outcome = NudgeOutcome(rawValue: defaultOutcome.lowercased()) ?? .done }
+    }
+
+    private var outcomeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionEyebrow(text: "HOW DID IT GO?")
+            Picker("Outcome", selection: $outcome) {
+                Text("Done").tag(NudgeOutcome.done)
+                Text("Partial").tag(NudgeOutcome.partial)
+                Text("Not now").tag(NudgeOutcome.not_now)
+                Text("Busy").tag(NudgeOutcome.busy)
+                Text("Skipped").tag(NudgeOutcome.skipped)
+            }
+            .pickerStyle(.segmented)
+            Text(footerForOutcome)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    private var frictionCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(text: "FRICTION NOTE")
+            TextField("What got in the way? (optional)",
+                      text: $friction, axis: .vertical)
+                .lineLimit(2...5)
+                .foregroundStyle(.white)
+                .tint(Theme.ember)
+                .padding(12)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        }
+                }
+            Text("Feeds adaptation. Specific beats polite — 'kids meltdown at 6pm' is more useful than 'busy'.")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard()
+    }
+
+    @ViewBuilder
+    private var resultCards: some View {
+        if case .sent(let ripples, let adaptation, let coachResponse) = result {
+            if let cr = coachResponse, !cr.isEmpty {
+                // The coach's voice — distinct treatment from the world ripples.
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionEyebrow(text: "FROM YOUR COACH", icon: "quote.opening")
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "person.fill.questionmark")
+                            .font(.title3)
+                            .foregroundStyle(Theme.emberGradient)
+                            .shadow(color: Theme.ember.opacity(0.5), radius: 6)
+                        Text(cr)
+                            .font(.system(.callout, design: .serif))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCardTinted(Theme.ember)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                SectionEyebrow(text: "REFLECTED IN YOUR WORLD", icon: "sparkles")
+                ForEach(ripples, id: \.self) { ripple in
+                    HStack(spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(Theme.gold)
+                        Text(ripple)
+                            .foregroundStyle(.white.opacity(0.92))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if let a = adaptation, !a.isEmpty {
+                    Text(a)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+        }
+
+        if case .failed(let msg) = result {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.rose)
+                Text(msg)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCardTinted(Theme.rose)
+        }
+    }
+
+    private var sendButton: some View {
+        Button {
+            Task { await send() }
+        } label: {
+            HStack {
+                if sending { ProgressView().tint(.black) }
+                Text(sending ? "Sending…" : "Send")
+            }
+        }
+        .buttonStyle(EmberButtonStyle())
+        .disabled(sending || result != nil)
+        .opacity(result != nil ? 0.4 : 1.0)
     }
 
     private var footerForOutcome: String {
@@ -154,4 +214,3 @@ final class NudgeReplyRouter: ObservableObject {
         presented = Presented(nudgeId: nudgeId, actionId: actionId)
     }
 }
-
