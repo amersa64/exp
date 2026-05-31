@@ -72,8 +72,8 @@ actor CoachAPI {
 
     /// The weekly local-notification plan the brain wants scheduled on-device
     /// (the free alternative to APNs push). See NotificationScheduler.
-    func notificationPlan() async throws -> [ReminderSpec] {
-        let wrapper: ReminderPlanResponse = try await get("/notifications/plan")
+    func notificationPlan(hour: Int) async throws -> [ReminderSpec] {
+        let wrapper: ReminderPlanResponse = try await get("/notifications/plan", query: ["hour": String(hour)])
         return wrapper.reminders
     }
 

@@ -1129,6 +1129,7 @@ private struct SettingsSheet: View {
     @EnvironmentObject var sessionStore: SessionStore
     @Environment(\.dismiss) var dismiss
     @State private var confirmReset = false
+    @State private var trainingHour = NotificationScheduler.trainingHour
 
     var body: some View {
         NavigationStack {
@@ -1147,6 +1148,26 @@ private struct SettingsSheet: View {
                             )
                             Divider().background(Color.white.opacity(0.06))
                             settingsRow(label: "User", value: sessionStore.userId)
+                        }
+
+                        settingsGroup("REMINDERS") {
+                            HStack {
+                                Label("Training time", systemImage: "bell")
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Picker("Training time", selection: $trainingHour) {
+                                    ForEach(5...22, id: \.self) { h in
+                                        Text(Self.hourLabel(h)).tag(h)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(Theme.ember)
+                            }
+                            Divider().background(Color.white.opacity(0.06))
+                            Text("When your reminders fire: night before at 8pm, at this time, and a log nudge 90 minutes later — on each training day.")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.5))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         settingsGroup("PROGRAM") {
@@ -1200,7 +1221,17 @@ private struct SettingsSheet: View {
             } message: {
                 Text("You'll go back through intake. Your verified history on the backend is unaffected.")
             }
+            .onChange(of: trainingHour) { _, newValue in
+                NotificationScheduler.trainingHour = newValue
+                Task { await NotificationScheduler.shared.refresh() }
+            }
         }
+    }
+
+    private static func hourLabel(_ h: Int) -> String {
+        var c = DateComponents(); c.hour = h; c.minute = 0
+        let date = Calendar.current.date(from: c) ?? Date()
+        return date.formatted(.dateTime.hour().minute())
     }
 
     private func settingsGroup<Content: View>(_ header: String, @ViewBuilder _ content: () -> Content) -> some View {

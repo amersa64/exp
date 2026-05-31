@@ -17,13 +17,21 @@ final class NotificationScheduler {
     // and never stomps on anything else (e.g. one-off local notifications).
     private let prefix = "coach-"
 
+    /// The user's training hour (local, 0–23) used to time reminders. Persisted
+    /// in UserDefaults; nonisolated + UserDefaults-backed so the Settings UI can
+    /// read/write it without actor hops. Defaults to 17:00 (5pm).
+    nonisolated static var trainingHour: Int {
+        get { UserDefaults.standard.object(forKey: "coach.trainingHour") as? Int ?? 17 }
+        set { UserDefaults.standard.set(newValue, forKey: "coach.trainingHour") }
+    }
+
     /// Fetch the plan and (re)schedule it. Idempotent: clears our previously
     /// scheduled reminders first, so the live set always matches the latest plan.
     /// No-ops quietly when offline, not onboarded, or notifications aren't allowed.
     func refresh() async {
         let specs: [ReminderSpec]
         do {
-            specs = try await CoachAPI.shared.notificationPlan()
+            specs = try await CoachAPI.shared.notificationPlan(hour: Self.trainingHour)
         } catch {
             return  // offline / pre-onboarding — keep whatever's already scheduled
         }
